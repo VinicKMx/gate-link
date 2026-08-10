@@ -12,6 +12,7 @@ compile_commands.json
 *.swo
 
 # Local planning/history notes
+PROJECT_SPEC.md
 planning/
 history/
 notes/

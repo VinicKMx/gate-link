@@ -116,6 +116,14 @@ west flash -d build/transmitter
 west flash -d build/receiver
 ```
 
+## Buy Me a Coffee
+
+If this project helped you, you can send a few sats over Lightning:
+
+`maquinalab@walletofsatoshi.com`
+
+<img src="assets/lightning-donation-qr.svg" alt="Lightning donation QR code" width="180">
+
 ## Documentation
 
 - [Architecture](docs/architecture.md)
