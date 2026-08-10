@@ -1,0 +1,23 @@
+build/
+twister-out/
+.west/
+.venv/
+*.pyc
+__pycache__/
+compile_commands.json
+.cache/
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local planning/history notes
+planning/
+history/
+notes/
+docs/local/
+docs/notes/
+docs/history/
+*.plan.md
+*.history.md
+*.notes.md
