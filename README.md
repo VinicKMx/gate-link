@@ -129,3 +129,8 @@ If this project helped you, you can send a few sats over Lightning:
 - [Architecture](docs/architecture.md)
 - [Protocol](docs/protocol.md)
 - [Decisions](docs/decisions.md)
+
+## License
+
+Dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your
+option.
