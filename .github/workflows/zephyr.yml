@@ -1,0 +1,40 @@
+name: Zephyr
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app:
+          - transmitter
+          - receiver
+
+    steps:
+      - name: Checkout application
+        uses: actions/checkout@v4
+        with:
+          path: app
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Zephyr
+        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        with:
+          app-path: app
+          toolchains: arm-zephyr-eabi
+
+      - name: Build ${{ matrix.app }}
+        run: |
+          west build -p always -b native_sim/native/64 \
+            -s app/apps/${{ matrix.app }} \
+            -d build/${{ matrix.app }}
