@@ -1,4 +1,7 @@
 manifest:
+  self:
+    path: gate-link
+
   remotes:
     - name: zephyrproject-rtos
       url-base: https://github.com/zephyrproject-rtos
@@ -7,5 +10,9 @@ manifest:
     - name: zephyr
       remote: zephyrproject-rtos
       revision: v3.7.0
-      import: true
-
+      import:
+        # Only the modules Gate Link actually builds against. native_sim needs
+        # no HAL module at all; the ESP32 target needs hal_espressif, whose
+        # binary blobs are fetched separately with `west blobs fetch`.
+        name-allowlist:
+          - hal_espressif

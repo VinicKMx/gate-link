@@ -7,14 +7,9 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  tests:
+    name: Protocol tests
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        app:
-          - transmitter
-          - receiver
 
     steps:
       - name: Checkout application
@@ -31,10 +26,59 @@ jobs:
         uses: zephyrproject-rtos/action-zephyr-setup@66a907961072acaa85313d2e064e9f071141265a # v1.0.15
         with:
           app-path: app
-          toolchains: arm-zephyr-eabi
+          toolchains: x86_64-zephyr-elf
+
+      # The protocol module is hardware independent (D004), so it runs on the
+      # host rather than on a board.
+      - name: Run protocol tests
+        run: |
+          west twister -T app/tests -p native_sim/native/64 \
+            --inline-logs --outdir twister-out
+
+  build:
+    name: Build ${{ matrix.app }} for ${{ matrix.board }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app:
+          - transmitter
+          - receiver
+        board:
+          - native_sim/native/64
+          - esp32_devkitc_wroom/esp32/procpu
+        include:
+          # native_sim compiles with the host compiler; the SDK toolchain here
+          # is only what the setup action installs by default.
+          - board: native_sim/native/64
+            toolchain: x86_64-zephyr-elf
+          - board: esp32_devkitc_wroom/esp32/procpu
+            toolchain: xtensa-espressif_esp32_zephyr-elf
+            blobs: hal_espressif
+
+    steps:
+      - name: Checkout application
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: app
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Set up Zephyr
+        uses: zephyrproject-rtos/action-zephyr-setup@66a907961072acaa85313d2e064e9f071141265a # v1.0.15
+        with:
+          app-path: app
+          toolchains: ${{ matrix.toolchain }}
+
+      - name: Fetch ${{ matrix.blobs }} binary blobs
+        if: matrix.blobs != ''
+        run: west blobs fetch ${{ matrix.blobs }}
 
       - name: Build ${{ matrix.app }}
         run: |
-          west build -p always -b native_sim/native/64 \
+          west build -p always -b ${{ matrix.board }} \
             -s app/apps/${{ matrix.app }} \
             -d build/${{ matrix.app }}
