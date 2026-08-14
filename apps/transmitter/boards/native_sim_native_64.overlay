@@ -1,0 +1,47 @@
+/*
+ * Copyright (c) 2026 Vinicius Pedrosa
+ *
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ *
+ * Host build of the transmitter. The button and status LEDs are backed by the
+ * GPIO emulator, so the application can exercise the same devicetree aliases it
+ * uses on real hardware (D005) without a board attached.
+ *
+ * Pin 0 of gpio0 is already taken by the board's own led0 node.
+ */
+
+#include <zephyr/dt-bindings/gpio/gpio.h>
+#include <zephyr/dt-bindings/input/input-event-codes.h>
+
+/ {
+	aliases {
+		gate-button = &gate_button;
+		gate-status-ok = &gate_status_ok;
+		gate-status-error = &gate_status_error;
+	};
+
+	gate_buttons {
+		compatible = "gpio-keys";
+		debounce-interval-ms = <30>;
+
+		gate_button: gate_button {
+			gpios = <&gpio0 1 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "Gate trigger button";
+			zephyr,code = <INPUT_KEY_0>;
+		};
+	};
+
+	gate_leds {
+		compatible = "gpio-leds";
+
+		gate_status_ok: gate_status_ok {
+			gpios = <&gpio0 2 GPIO_ACTIVE_HIGH>;
+			label = "Command acknowledged";
+		};
+
+		gate_status_error: gate_status_error {
+			gpios = <&gpio0 3 GPIO_ACTIVE_HIGH>;
+			label = "Command failed";
+		};
+	};
+};

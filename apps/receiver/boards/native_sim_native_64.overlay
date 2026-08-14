@@ -1,0 +1,38 @@
+/*
+ * Copyright (c) 2026 Vinicius Pedrosa
+ *
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ *
+ * Host build of the receiver. The actuator output is backed by the GPIO
+ * emulator, so receiver logic can be exercised against the same devicetree
+ * alias it uses on real hardware (D005).
+ *
+ * Pin 0 of gpio0 is already taken by the board's own led0 node.
+ */
+
+#include <zephyr/dt-bindings/gpio/gpio.h>
+
+/ {
+	aliases {
+		gate-actuator = &gate_actuator;
+		gate-status = &gate_status;
+	};
+
+	gate_outputs {
+		compatible = "gpio-leds";
+
+		/*
+		 * The actuator is an LED on the bench and an isolated contact
+		 * driver once installed (D003). Only this node changes.
+		 */
+		gate_actuator: gate_actuator {
+			gpios = <&gpio0 1 GPIO_ACTIVE_HIGH>;
+			label = "Actuator output";
+		};
+
+		gate_status: gate_status {
+			gpios = <&gpio0 2 GPIO_ACTIVE_HIGH>;
+			label = "Receiver status";
+		};
+	};
+};

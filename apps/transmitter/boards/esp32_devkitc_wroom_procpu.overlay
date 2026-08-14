@@ -1,0 +1,81 @@
+/*
+ * Copyright (c) 2026 Vinicius Pedrosa
+ *
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ *
+ * Transmitter wiring for ESP32 DevKitC V4 (WROOM-32D) with a HopeRF RFM95W.
+ *
+ *   RFM95W          ESP32      note
+ *   ------          -----      ----
+ *   SCK             GPIO18     spi3 / VSPI, board default pinctrl
+ *   MISO            GPIO19     spi3 / VSPI, board default pinctrl
+ *   MOSI            GPIO23     spi3 / VSPI, board default pinctrl
+ *   NSS  (CS)       GPIO5      driven as a GPIO chip select
+ *   RESET           GPIO27     active low on SX1276
+ *   DIO0            GPIO26     TxDone / RxDone interrupt
+ *   3V3, GND        3V3, GND   3.3 V only - 5 V destroys the module
+ *
+ *   trigger button  GPIO4      to GND, internal pull-up
+ *   success LED     GPIO25     series resistor to GND
+ *   error LED       GPIO33     series resistor to GND
+ *
+ * Pins 0, 2, 12 and 15 are strapping pins and pins 34-39 are input only, so
+ * none of them are used for outputs here.
+ */
+
+#include <zephyr/dt-bindings/gpio/gpio.h>
+#include <zephyr/dt-bindings/input/input-event-codes.h>
+
+/ {
+	aliases {
+		gate-button = &gate_button;
+		gate-status-ok = &gate_status_ok;
+		gate-status-error = &gate_status_error;
+		lora0 = &lora0;
+	};
+
+	gate_buttons {
+		compatible = "gpio-keys";
+		debounce-interval-ms = <30>;
+
+		gate_button: gate_button {
+			gpios = <&gpio0 4 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "Gate trigger button";
+			zephyr,code = <INPUT_KEY_0>;
+		};
+	};
+
+	gate_leds {
+		compatible = "gpio-leds";
+
+		gate_status_ok: gate_status_ok {
+			gpios = <&gpio0 25 GPIO_ACTIVE_HIGH>;
+			label = "Command acknowledged";
+		};
+
+		gate_status_error: gate_status_error {
+			gpios = <&gpio0 33 GPIO_ACTIVE_HIGH>;
+			label = "Command failed";
+		};
+	};
+};
+
+&spi3 {
+	status = "okay";
+	cs-gpios = <&gpio0 5 GPIO_ACTIVE_LOW>;
+
+	lora0: lora@0 {
+		compatible = "semtech,sx1276";
+		reg = <0>;
+		reset-gpios = <&gpio0 27 GPIO_ACTIVE_LOW>;
+		/*
+		 * Only DIO0 is required for TX/RX completion. Wire and list
+		 * DIO1/DIO2 here as well if a later phase needs them.
+		 */
+		dio-gpios = <&gpio0 26 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>;
+		/* Conservative for breadboard wiring; raise once validated. */
+		spi-max-frequency = <1000000>;
+		/* The RFM95W only routes the PA_BOOST output. */
+		power-amplifier-output = "pa-boost";
+	};
+};

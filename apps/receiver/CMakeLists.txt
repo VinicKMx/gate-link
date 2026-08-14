@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Vinicius Pedrosa
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 cmake_minimum_required(VERSION 3.20.0)
 
 set(GATE_LINK_ROOT ${CMAKE_CURRENT_LIST_DIR}/../..)
@@ -8,4 +11,3 @@ project(gate_link_receiver)
 add_subdirectory(${GATE_LINK_ROOT}/common common)
 
 target_sources(app PRIVATE src/main.c)
-

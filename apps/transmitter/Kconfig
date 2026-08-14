@@ -1,0 +1,14 @@
+# Copyright (c) 2026 Vinicius Pedrosa
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+mainmenu "Gate Link transmitter"
+
+menu "Gate Link transmitter"
+
+module = GATE_TX
+module-str = gate_tx
+source "subsys/logging/Kconfig.template.log_config"
+
+endmenu
+
+source "Kconfig.zephyr"
