@@ -86,18 +86,40 @@ Prerequisites:
 
 - Zephyr SDK/toolchain installed;
 - `west` available in `PATH`;
-- Zephyr dependencies fetched for the selected manifest.
+- a Zephyr workspace initialized with this repository as the manifest
+  repository.
+
+The repository does not need to be inside the workspace. A typical local setup
+keeps this repository elsewhere and points the workspace `.west/config` at it:
+
+```ini
+[manifest]
+path = <relative-or-absolute-path-to-gate-link>
+file = west.yml
+
+[zephyr]
+base = zephyr
+```
+
+After the workspace is configured, fetch the modules listed in the manifest:
+
+```sh
+cd <zephyr-workspace>
+west update
+```
 
 For a host build, which defaults to `native_sim/native/64`:
 
 ```sh
-sh scripts/build_all.sh
+cd <zephyr-workspace>
+<path-to-gate-link>/scripts/build_all.sh
 ```
 
 To build for the ESP32 bench hardware:
 
 ```sh
-BOARD=esp32_devkitc_wroom/esp32/procpu sh scripts/build_all.sh
+cd <zephyr-workspace>
+BOARD=esp32_devkitc_wroom/esp32/procpu <path-to-gate-link>/scripts/build_all.sh
 ```
 
 The ESP32 target additionally needs the Espressif binary blobs, once per
@@ -110,8 +132,13 @@ west blobs fetch hal_espressif
 Individual builds:
 
 ```sh
-west build -p always -b native_sim/native/64 apps/transmitter -d build/transmitter
-west build -p always -b native_sim/native/64 apps/receiver -d build/receiver
+west build -p always -b native_sim/native/64 \
+  -s <path-to-gate-link>/apps/transmitter \
+  -d build/transmitter
+
+west build -p always -b native_sim/native/64 \
+  -s <path-to-gate-link>/apps/receiver \
+  -d build/receiver
 ```
 
 Board overlays are named after the board target, so a board is only supported
@@ -125,7 +152,7 @@ The protocol module is independent from radio and GPIO, so it is tested on the
 host:
 
 ```sh
-west twister -T tests -p native_sim/native/64
+west twister -T <path-to-gate-link>/tests -p native_sim/native/64
 ```
 
 ## Flash
