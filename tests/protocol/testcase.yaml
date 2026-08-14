@@ -1,0 +1,15 @@
+# Copyright (c) 2026 Vinicius Pedrosa
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+common:
+  tags:
+    - protocol
+  # The protocol module is hardware independent by design (D004), so it is
+  # tested on the host rather than on a board.
+  platform_allow:
+    - native_sim/native/64
+  integration_platforms:
+    - native_sim/native/64
+
+tests:
+  gate_link.protocol: {}

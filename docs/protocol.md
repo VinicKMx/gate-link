@@ -21,20 +21,40 @@ the final gate movement.
 
 ## Packet Fields
 
-Protocol packets reserve these fields:
+Every packet is a fixed 19-byte little-endian frame:
 
 ```text
-protocol_version
-message_type
-device_id
-sequence
-command
-auth_tag
+offset  size  field
+0       1     protocol_version
+1       1     message_type
+2       4     device_id
+6       4     sequence
+10      1     command
+11      8     auth_tag
 ```
 
+Both `COMMAND` and `ACK` use this shape. An `ACK` echoes the command it
+acknowledges, so validation is uniform for every message type.
+
 `auth_tag` is part of the packet model so command authentication can be added
-without changing the packet shape. Unauthenticated builds must still validate
-all other fields strictly.
+without changing the packet shape. Unauthenticated builds send it as zeros and
+must still validate all other fields strictly.
+
+Two values are reserved and never valid on the wire:
+
+```text
+device_id == 0    device identity not assigned
+sequence  == 0    no command in progress
+```
+
+Reserving them lets an uninitialized packet be rejected as invalid instead of
+travelling, and gives the receiver a distinct "nothing executed yet" state for
+duplicate detection.
+
+A frame is accepted only when the length is exactly 19 bytes, the version
+matches, the message type and command are known values, and neither reserved
+value appears. A frame failing any check is dropped without touching decoded
+output, so a caller can never act on a partially parsed packet.
 
 ## Sequence Numbers
 
