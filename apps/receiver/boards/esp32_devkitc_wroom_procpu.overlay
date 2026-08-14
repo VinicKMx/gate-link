@@ -11,8 +11,8 @@
  *   MISO            GPIO19     spi3 / VSPI, board default pinctrl
  *   MOSI            GPIO23     spi3 / VSPI, board default pinctrl
  *   NSS  (CS)       GPIO5      driven as a GPIO chip select
- *   RESET           GPIO27     active low on SX1276
- *   DIO0            GPIO26     TxDone / RxDone interrupt
+ *   RESET           GPIO17     active low on SX1276
+ *   DIO0            GPIO16     TxDone / RxDone interrupt
  *   3V3, GND        3V3, GND   3.3 V only - 5 V destroys the module
  *
  *   actuator out    GPIO25     LED on the bench, isolated driver once installed
@@ -57,12 +57,12 @@
 	lora0: lora@0 {
 		compatible = "semtech,sx1276";
 		reg = <0>;
-		reset-gpios = <&gpio0 27 GPIO_ACTIVE_LOW>;
+		reset-gpios = <&gpio0 17 GPIO_ACTIVE_LOW>;
 		/*
 		 * Only DIO0 is required for TX/RX completion. Wire and list
 		 * DIO1/DIO2 here as well if a later phase needs them.
 		 */
-		dio-gpios = <&gpio0 26 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>;
+		dio-gpios = <&gpio0 16 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>;
 		/* Conservative for breadboard wiring; raise once validated. */
 		spi-max-frequency = <1000000>;
 		/* The RFM95W only routes the PA_BOOST output. */
