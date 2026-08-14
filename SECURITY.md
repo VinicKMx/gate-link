@@ -31,6 +31,9 @@ primitives. The project will not ship a custom authentication algorithm.
 
 ## Reporting
 
-Report security-sensitive issues privately before public disclosure. Until a
-dedicated security contact exists, open a minimal issue asking for a private
-contact path, without publishing exploit details.
+Report security-sensitive issues privately before public disclosure, through
+GitHub's private vulnerability reporting on this repository:
+
+<https://github.com/VinicKMx/gate-link/security/advisories/new>
+
+Please do not open a public issue containing exploit details.

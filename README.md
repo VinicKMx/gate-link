@@ -46,18 +46,24 @@ The system is designed around unreliable wireless communication:
 ```text
 apps/
   transmitter/     Zephyr application for the button-side device
+    boards/        Devicetree overlays: button, status LEDs, LoRa wiring
   receiver/        Zephyr application for the actuator-side device
+    boards/        Devicetree overlays: actuator output, LoRa wiring
 common/
-  protocol/        Packet names, versions, and encode/decode code
-  radio/           Thin wrapper over Zephyr LoRa APIs
-  utils/           Shared small helpers, if needed
+  protocol/        Packet model, encode/decode, and validation
 docs/
   architecture.md  System boundaries and component responsibilities
   protocol.md      Packet model, ACK, sequencing, and duplicate handling
   decisions.md     Project decisions that constrain implementation
+tests/
+  protocol/        Host tests for the hardware-independent protocol code
 scripts/
   build_all.sh
 ```
+
+`common/radio/`, the thin wrapper over the Zephyr LoRa APIs, arrives with the
+first over-the-air phase. The board overlays already describe the LoRa wiring it
+will bind to.
 
 ## Design Constraints
 
@@ -82,29 +88,44 @@ Prerequisites:
 - `west` available in `PATH`;
 - Zephyr dependencies fetched for the selected manifest.
 
-For a host build, use `native_sim`:
+For a host build, which defaults to `native_sim/native/64`:
 
 ```sh
 sh scripts/build_all.sh
 ```
 
-To build for a specific ESP32 board after choosing the board name:
+To build for the ESP32 bench hardware:
 
 ```sh
 BOARD=esp32_devkitc_wroom/esp32/procpu sh scripts/build_all.sh
 ```
 
-If the exact ESP32 target differs in your Zephyr version, list available boards:
+The ESP32 target additionally needs the Espressif binary blobs, once per
+workspace:
 
 ```sh
-west boards | rg esp32
+west blobs fetch hal_espressif
 ```
 
 Individual builds:
 
 ```sh
-west build -p always -b native_sim apps/transmitter -d build/transmitter
-west build -p always -b native_sim apps/receiver -d build/receiver
+west build -p always -b native_sim/native/64 apps/transmitter -d build/transmitter
+west build -p always -b native_sim/native/64 apps/receiver -d build/receiver
+```
+
+Board overlays are named after the board target, so a board is only supported
+once `apps/<app>/boards/<board target>.overlay` exists. Building for a target
+without an overlay fails at compile time with a message naming the missing
+devicetree alias, rather than silently producing firmware with no I/O.
+
+## Tests
+
+The protocol module is independent from radio and GPIO, so it is tested on the
+host:
+
+```sh
+west twister -T tests -p native_sim/native/64
 ```
 
 ## Flash
