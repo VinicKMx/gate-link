@@ -12,7 +12,9 @@ manifest:
       revision: v3.7.0
       import:
         # Only the modules Gate Link actually builds against. native_sim needs
-        # no HAL module at all; the ESP32 target needs hal_espressif, whose
-        # binary blobs are fetched separately with `west blobs fetch`.
+        # no HAL module at all. The ESP32 target needs hal_espressif, whose
+        # binary blobs are fetched separately with `west blobs fetch`; the
+        # SX1276/RFM95W driver also needs Zephyr's loramac-node radio sources.
         name-allowlist:
           - hal_espressif
+          - loramac-node

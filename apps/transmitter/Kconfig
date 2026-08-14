@@ -11,4 +11,6 @@ source "subsys/logging/Kconfig.template.log_config"
 
 endmenu
 
+rsource "../../common/Kconfig"
+
 source "Kconfig.zephyr"

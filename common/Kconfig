@@ -1,0 +1,56 @@
+# Copyright (c) 2026 Vinicius Pedrosa
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+menu "Gate Link radio"
+
+module = GATE_RADIO
+module-str = gate_radio
+source "subsys/logging/Kconfig.template.log_config"
+
+config GATE_RADIO_FREQUENCY_HZ
+	int "LoRa carrier frequency in Hz"
+	default 915000000
+	help
+	  Carrier frequency used by the point-to-point LoRa link. Keep this
+	  centralized so the applications do not embed regional or module
+	  assumptions in their state machines.
+
+config GATE_RADIO_BANDWIDTH_KHZ
+	int "LoRa signal bandwidth in kHz"
+	default 125
+	range 125 500
+	help
+	  Supported values are 125, 250 and 500 kHz.
+
+config GATE_RADIO_SPREADING_FACTOR
+	int "LoRa spreading factor"
+	default 10
+	range 6 12
+
+config GATE_RADIO_CODING_RATE_DENOMINATOR
+	int "LoRa coding rate denominator"
+	default 5
+	range 5 8
+	help
+	  A value of 5 means coding rate 4/5, 6 means 4/6, and so on.
+
+config GATE_RADIO_PREAMBLE_LEN
+	int "LoRa preamble length"
+	default 8
+	range 6 65535
+
+config GATE_RADIO_TX_POWER_DBM
+	int "LoRa TX power in dBm"
+	default 10
+	range -9 20
+	help
+	  Keep conservative during bench tests. Final value depends on module,
+	  antenna, range tests, and local regulation.
+
+config GATE_RADIO_PUBLIC_NETWORK
+	bool "Use LoRa public network sync word"
+	default n
+	help
+	  Keep disabled for this private point-to-point link.
+
+endmenu

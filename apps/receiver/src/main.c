@@ -9,6 +9,7 @@
 #include <zephyr/logging/log.h>
 
 #include <protocol/gate_protocol.h>
+#include <radio/gate_radio.h>
 
 LOG_MODULE_REGISTER(gate_rx, CONFIG_GATE_RX_LOG_LEVEL);
 
@@ -23,10 +24,16 @@ BUILD_ASSERT(DT_NODE_EXISTS(DT_ALIAS(gate_status)),
 
 int main(void)
 {
+	int ret;
+
 	LOG_INF("RX boot");
 	LOG_INF("RX protocol version=%u packet=%u bytes command=%s", gate_protocol_version(),
 		GATE_PROTOCOL_PACKET_SIZE, gate_command_name(GATE_COMMAND_TRIGGER));
-	LOG_INF("RX hardware interfaces are not configured in this build");
+
+	ret = gate_radio_init();
+	if (ret < 0) {
+		LOG_WRN("RX radio unavailable: %d", ret);
+	}
 
 	for (;;) {
 		k_sleep(K_SECONDS(30));
