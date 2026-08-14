@@ -9,6 +9,21 @@ module = GATE_TX
 module-str = gate_tx
 source "subsys/logging/Kconfig.template.log_config"
 
+config GATE_TX_DEVICE_ID
+	int "Transmitter device id"
+	default 1
+	range 1 2147483647
+	help
+	  Device id written into bench COMMAND packets.
+
+config GATE_TX_SEND_INTERVAL_MS
+	int "Bench command send interval in milliseconds"
+	default 2000
+	range 500 60000
+	help
+	  Temporary bench interval used before the physical button module is
+	  implemented.
+
 endmenu
 
 rsource "../../common/Kconfig"

@@ -9,6 +9,13 @@ module = GATE_RX
 module-str = gate_rx
 source "subsys/logging/Kconfig.template.log_config"
 
+config GATE_RX_RECEIVE_TIMEOUT_MS
+	int "Bench receive timeout in milliseconds"
+	default 10000
+	range 1000 60000
+	help
+	  Timeout used while waiting for bench LoRa packets.
+
 endmenu
 
 rsource "../../common/Kconfig"
