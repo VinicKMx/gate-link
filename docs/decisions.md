@@ -108,3 +108,22 @@ hardware initialization fails.
 
 Implementation constraint: button events, retries, ACK waits, and actuator pulse
 duration must have explicit limits.
+
+## D011 - Use ESP32 SPI Hardware Chip Select for RFM95W
+
+Decision: on the ESP32 DevKitC WROOM bench target, the RFM95W `NSS` line on
+GPIO5 is driven by the `spi3` hardware chip select from the board's default
+pinctrl. The `lora0` overlay must not declare `cs-gpios` for that same line.
+
+Reason: with Zephyr 3.7.0 on ESP32, declaring `cs-gpios` makes the SPI driver
+avoid keeping the hardware chip select active across a multi-buffer transfer.
+The logic analyzer showed `NSS` rising between the SX1276 register address byte
+and the data byte. The SX1276 requires `NSS` to remain low for the whole
+address+data transaction; otherwise it treats each byte as a separate operation
+and returns `0x00`, including when reading `REG_VERSION` at `0x42`.
+
+Implementation constraint: ESP32 overlays using the board's
+`SPIM3_CSEL_GPIO5` pinctrl must leave chip select under SPI hardware control.
+When changing board, SPI bus, or LoRa module wiring, verify with a logic
+analyzer that `NSS` stays low for the complete register transaction and that
+the SX1276 version register reads `0x12`.

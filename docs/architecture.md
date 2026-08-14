@@ -110,3 +110,10 @@ Board-specific details belong in Zephyr devicetree overlays:
 
 Application code should consume devicetree aliases and device handles instead of
 hardcoded ESP32 GPIO numbers.
+
+For the ESP32 DevKitC WROOM bench target, the RFM95W `NSS` signal is the
+`spi3` hardware chip select on GPIO5. The overlay intentionally does not declare
+`cs-gpios` for this line because the SX1276 register protocol needs chip select
+to stay asserted across the address byte and the data byte. If the selected
+board or SPI peripheral changes, validate the final chip-select behavior with a
+logic analyzer before treating the radio link as reliable.
