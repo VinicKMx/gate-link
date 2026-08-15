@@ -187,3 +187,21 @@ at startup. It does not extend to runtime I/O errors, which are recoverable and
 are handled as such: a failed button read keeps the transmitter waiting instead
 of fabricating a command, and a failed actuator turn-off is retried forever
 rather than leaving the output energized.
+
+## D015 - Refresh RX Mode After Receive Timeouts
+
+Decision: the receiver probes the SX1276 and re-applies RX mode after receive
+timeouts.
+
+Reason: bench testing showed that removing power from the RFM95W while the
+receiver was already running did not necessarily produce a hard `lora_recv()`
+error. The driver could keep returning receive timeouts, which normally mean
+"no packet heard". If the firmware treats every timeout as proof that the radio
+is healthy, a powered-down or reset SX1276 can remain silent forever until the
+ESP32 is rebooted.
+
+Implementation constraint: RX timeout handling must stay quiet on the success
+path but must verify that the chip still answers and that RX mode is
+programmed. If probing fails, the receiver enters the same paced recovery loop
+used for other radio failures and only returns to packet handling after the
+module answers and RX mode is configured again.

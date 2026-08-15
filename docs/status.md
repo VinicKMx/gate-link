@@ -1,10 +1,10 @@
 # Implementation Status
 
-Gate Link is code-complete through Phase 7 on the current bench hardware:
+Gate Link is code-complete and bench-validated through Phase 7 on the current
+bench hardware:
 physical button, status LEDs, LoRa command/ACK, retry, duplicate suppression,
-and software robustness paths are implemented. The button, LED, and actuator
-paths have not yet been exercised end to end with the application firmware; see
-`docs/test-plan.md`.
+and software robustness paths are implemented and have passed the manual tests
+recorded in `docs/test-plan.md`.
 
 This file tracks the public technical state of the firmware.
 
@@ -52,9 +52,8 @@ Phase 9   Range test                        pending
 Phase 10  Real actuator preparation         pending
 ```
 
-Phase 7 is code-complete for the LED-only bench setup and awaits the bench runs
-listed in `docs/test-plan.md`. It does not enable a hardware watchdog yet; see
-D013 in `docs/decisions.md`.
+Phase 7 is complete for the LED-only bench setup. It does not enable a hardware
+watchdog yet; see D013 in `docs/decisions.md`.
 
 ## Verified on the Bench
 
@@ -71,11 +70,18 @@ Observed with the application firmware running on both boards:
 - TX stops after a configured retry limit and reports final failure;
 - RX suppresses duplicate command execution for the accepted transmitter id;
 - RX still sends ACK when a valid duplicate command is received;
+- TX turns one debounced physical press into exactly one command;
+- TX ignores a held button until it is released;
+- TX success and error LEDs reflect command outcome;
+- RX produces one actuator pulse per non-duplicate command and no pulse for a
+  duplicate;
+- RX detects a powered-down RFM95W during receive timeouts, retries radio
+  recovery, and receives commands again after the module power returns;
 - bench RSSI/SNR is visible in serial logs.
 
-The GPIO4 button and the GPIO25/GPIO33 LEDs were validated electrically with a
-temporary I/O sketch and a logic analyzer, which proves the wiring but not this
-firmware's use of it.
+The GPIO4 button and the GPIO25/GPIO33 LEDs were first validated electrically
+with a temporary I/O sketch and a logic analyzer. They are now also validated
+through the application firmware in TEST-001, TEST-002, and TEST-004.
 
 ## Covered by Host Tests
 
@@ -85,18 +91,12 @@ firmware's use of it.
 - RX duplicate state, RX reset behavior, and the rule that a sequence is
   recorded only after the actuator pulse completes.
 
-## Implemented, Not Yet Bench-Verified
+## Remaining Bench Gaps
 
-Written and reviewed, but never observed running end to end. These are what
-`docs/test-plan.md` exists to close:
-
-- TX turning one debounced physical press into exactly one command (TEST-001);
-- TX ignoring a held button until it is released (TEST-002);
-- TX success and error LEDs reflecting command outcome (TEST-001, TEST-004);
-- RX producing one actuator pulse per non-duplicate command and none for a
-  duplicate (TEST-001, TEST-003);
-- radio recovery after removing module power while running (TEST-007);
-- the receiver retrying to de-energize a stuck actuator output.
+The receiver retry path for a stuck actuator output is implemented but has not
+been physically forced on the bench. The remaining validation before real
+actuator hardware is range and installation testing, not the LED-only command
+chain.
 
 ## Current Firmware Behavior
 
@@ -135,18 +135,15 @@ Both applications treat a missing or failing radio as recoverable. At boot they
 retry the probe every `CONFIG_GATE_RADIO_RECOVERY_INTERVAL_MS` until the module
 answers. At runtime, `CONFIG_GATE_RADIO_RECOVERY_THRESHOLD` consecutive radio
 errors trigger a re-probe followed by a fresh modem configuration; the receiver
-returns to RX mode as part of that. An unanswered command is a link failure, not
-a radio failure, and never triggers recovery. A build with no radio configured
-at all idles on purpose (D012).
+returns to RX mode as part of that. The receiver also refreshes RX mode after
+receive timeouts, because a powered-down SX1276 can otherwise look like an idle
+link rather than a hard radio error. An unanswered command is a link failure,
+not a radio failure, and never triggers transmitter recovery. A build with no
+radio configured at all idles on purpose (D012, D015).
 
 ## Next Criteria
 
-Before Phase 8 starts, TEST-001 through TEST-004 and TEST-007 must be run on the
-bench and recorded in the results table of `docs/test-plan.md`. Phase 8 changes
-the packet format, so a link that was never observed working end to end would
-make any regression impossible to attribute.
-
-Next implementation phase is then Phase 8: command authentication and replay
+Next implementation phase is Phase 8: command authentication and replay
 resistance. Range testing remains LED-only and must happen before any real gate
 actuator is connected.
 

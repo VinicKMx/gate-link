@@ -43,12 +43,11 @@ The system is designed around unreliable wireless communication:
 
 ## Current Status
 
-The bench firmware is code-complete through Phase 7 on the current LED-only
-hardware. Physical button input, status LEDs, actuator LED pulse, structured
-LoRa packets, ACK, timeout, retry, receiver duplicate suppression, and software
-radio recovery are implemented. The button and LED paths still need an
-end-to-end bench run with the application firmware; see
-[docs/test-plan.md](docs/test-plan.md).
+The bench firmware is code-complete and bench-validated through Phase 7 on the
+current LED-only hardware. Physical button input, status LEDs, actuator LED
+pulse, structured LoRa packets, ACK, timeout, retry, receiver duplicate
+suppression, and software radio recovery are implemented and have passed the
+manual bench tests recorded in [docs/test-plan.md](docs/test-plan.md).
 
 Implemented now:
 
@@ -67,6 +66,8 @@ Implemented now:
   configured retry limit;
 - RX suppresses duplicate command execution by accepted transmitter identity and
   still replies with ACK;
+- receiver radio recovery was bench-tested by removing RFM95W VCC at runtime
+  and confirming recovery after power returned;
 - host tests cover invalid packets, incorrect ACK matching, sequence wraparound,
   TX reboot-style sequence restart, duplicate commands, and current RX reset
   behavior;
