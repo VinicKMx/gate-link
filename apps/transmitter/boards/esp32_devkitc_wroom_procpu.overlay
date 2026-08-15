@@ -54,7 +54,8 @@
 		};
 
 		gate_status_error: gate_status_error {
-			gpios = <&gpio0 33 GPIO_ACTIVE_HIGH>;
+			/* ESP32 GPIO33 is controller gpio1 offset 1. */
+			gpios = <&gpio1 1 GPIO_ACTIVE_HIGH>;
 			label = "Command failed";
 		};
 	};
