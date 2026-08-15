@@ -1,8 +1,8 @@
 # Implementation Status
 
-Gate Link has completed Phase 6 and has started Phase 7 software robustness:
-structured LoRa packets, ACK, timeout, retry, receiver duplicate suppression,
-and stricter ACK matching are implemented.
+Gate Link has completed Phase 7 on the current bench hardware: physical button,
+status LEDs, LoRa command/ACK, retry, duplicate suppression, and software
+robustness paths are implemented.
 
 This file tracks the public technical state of the firmware.
 
@@ -38,30 +38,33 @@ The GPIO5 chip-select line is controlled by the ESP32 SPI hardware, not by
 
 ```text
 Phase 0   Repository bootstrap              done
-Phase 1   GPIO local                        pending hardware wiring
+Phase 1   GPIO local                        done
 Phase 2   Minimal LoRa communication        done
 Phase 3   Structured protocol               done
 Phase 4   ACK                               done
 Phase 5   Timeout and retry                 done
 Phase 6   Duplicate suppression             done
-Phase 7   Robustness                        in progress
+Phase 7   Robustness                        done
 Phase 8   Security/authentication           pending
 Phase 9   Range test                        pending
 Phase 10  Real actuator preparation         pending
 ```
 
-Phase 1 is marked as pending because the physical button, LEDs, resistors, and
-capacitors are not wired yet. The firmware keeps the devicetree aliases in
-place so GPIO validation can be added without changing the radio/protocol
-modules.
+Phase 7 is complete for the LED-only bench setup. It does not enable a hardware
+watchdog yet; see D013 in `docs/decisions.md`.
 
 ## Verified So Far
 
 - both ESP32 boards enumerate over USB serial;
 - both boards boot Zephyr;
 - both LoRa modules answer with SX1276 version `0x12`;
+- TX reads the physical GPIO4 button with debounce;
+- TX waits for a debounced release before accepting another press;
+- TX success and error LEDs are controlled through devicetree aliases;
+- RX actuator and status LEDs are controlled through devicetree aliases;
 - TX sends fixed-size binary protocol packets;
 - RX receives and validates those packets;
+- RX produces one actuator LED pulse for each non-duplicate valid command;
 - RX sends ACK packets for valid commands;
 - TX accepts the matching ACK and reports command success;
 - TX retries the same sequence after ACK timeout;
@@ -71,27 +74,29 @@ modules.
 - TX ignores ACK packets that do not match the current device id, sequence, and
   command;
 - host tests cover TX sequence wraparound, TX reboot-style sequence restart,
-  RX duplicate state, and current RX reset behavior;
+  invalid frames, wrong ACK matching, RX duplicate state, and current RX reset
+  behavior;
 - neither application parks itself permanently when the radio fails: both retry
   at boot and recover after repeated runtime errors (D012);
 - bench RSSI/SNR is visible in serial logs.
 
 ## Current Firmware Behavior
 
-Until the physical button is connected, the transmitter starts a bench
-`TRIGGER` command at a configured interval. Each new command gets a new
-sequence number. If no matching ACK arrives before
-`CONFIG_GATE_TX_ACK_TIMEOUT_MS`, the transmitter sends the same packet again
-until `CONFIG_GATE_TX_MAX_RETRIES` is exhausted.
+The transmitter waits for one debounced physical button press. Each accepted
+press creates one `TRIGGER` command with a new sequence number. Holding the
+button down does not create another command; the transmitter waits for a
+debounced release before returning to ready state. If no matching ACK arrives
+before `CONFIG_GATE_TX_ACK_TIMEOUT_MS`, the transmitter sends the same packet
+again until `CONFIG_GATE_TX_MAX_RETRIES` is exhausted.
 
 The receiver accepts only valid `COMMAND(TRIGGER)` packets carrying the
 transmitter id in `CONFIG_GATE_RX_ACCEPTED_DEVICE_ID`. For a new sequence, it
-logs that the actuator would be triggered and sends an ACK for the same device
-id, sequence, and command. For a retransmitted sequence already accepted from
-that same transmitter identity, it logs that the actuator was suppressed and
-sends ACK again. Commands from any other device id are dropped without an ACK.
-That filter is addressing, not authentication; phase 8 is what makes a command
-unforgeable.
+triggers the actuator output, records the sequence as accepted, and sends an
+ACK for the same device id, sequence, and command. For a retransmitted sequence
+already accepted from that same transmitter identity, it logs that the actuator
+was suppressed and sends ACK again. Commands from any other device id are
+dropped without an ACK. That filter is addressing, not authentication; phase 8
+is what makes a command unforgeable.
 
 Frames longer than the 19-byte packet are rejected at the radio boundary rather
 than truncated, so an oversized frame can never be shortened into something
@@ -111,14 +116,8 @@ at all idles on purpose (D012).
 
 ## Next Criteria
 
-The remaining Phase 7 work depends on more hardware behavior:
+Next implementation phase is Phase 8: command authentication and replay
+resistance. Range testing remains LED-only and must happen before any real gate
+actuator is connected.
 
-- physical button debounce;
-- button-held handling;
-- actuator pulse behavior after the LED is wired;
-- watchdog decision;
-- bench confirmation of radio recovery by removing module power while running.
-
-Phase 1 GPIO work is complete when the bench button and LEDs are wired, the
-transmitter turns one physical press into one logical command, and the receiver
-actuator interface produces one LED pulse for each non-duplicate command.
+Manual validation steps are kept in `docs/test-plan.md`.

@@ -72,8 +72,9 @@ or actuator hardware.
 ## Shared Sequence Module
 
 `common/sequence` owns receiver-side duplicate suppression. It tracks the last
-accepted sequence per accepted transmitter identity and decides whether a valid
-command should cross the actuator boundary.
+accepted sequence per accepted transmitter identity, decides whether a valid
+command should cross the actuator boundary, and records acceptance only after
+the receiver confirms the command should not be retried as a fresh execution.
 
 It does not send ACKs, receive radio packets, or drive actuator hardware.
 

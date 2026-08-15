@@ -43,17 +43,22 @@ The system is designed around unreliable wireless communication:
 
 ## Current Status
 
-The bench firmware has completed Phase 6 and has started Phase 7 software
-robustness. Structured LoRa packets, ACK, timeout, retry, receiver duplicate
-suppression, and stricter ACK matching are implemented. Phase 1 actuator/button
-GPIO wiring is still pending physical bench wiring.
+The bench firmware has completed Phase 7 on the current LED-only hardware.
+Physical button input, status LEDs, actuator LED pulse, structured LoRa
+packets, ACK, timeout, retry, receiver duplicate suppression, and software
+radio recovery are implemented.
 
 Implemented now:
 
 - ESP32 DevKitC WROOM-32D boots under Zephyr;
 - RFM95W/SX1276 is detected over SPI;
+- TX reads a debounced physical button and waits for release before accepting
+  another command;
+- TX success/error LEDs and RX actuator/status LEDs are controlled through
+  devicetree aliases;
 - TX sends binary `COMMAND(TRIGGER, sequence)` packets over LoRa;
 - RX decodes and validates the protocol packet;
+- RX pulses the actuator LED once for each non-duplicate valid command;
 - RX replies with `ACK(sequence)`;
 - TX reports success only for the ACK matching the command in progress;
 - TX retransmits the same command sequence after ACK timeout, up to a
@@ -68,8 +73,6 @@ Implemented now:
 
 Not implemented yet:
 
-- physical button debounce;
-- actuator LED pulse;
 - cryptographic authentication.
 
 See [docs/status.md](docs/status.md) for the phase checklist.
@@ -91,6 +94,7 @@ docs/
   protocol.md      Packet model, ACK, sequencing, and duplicate handling
   decisions.md     Project decisions that constrain implementation
   status.md        Current implementation phase and bench validation state
+  test-plan.md     Manual bench validation procedures
 tests/
   protocol/        Host tests for packet encoding, validation, and ACK matching
   sequence/        Host tests for duplicate suppression decisions
@@ -203,6 +207,7 @@ west flash -d build/receiver
 - [Protocol](docs/protocol.md)
 - [Decisions](docs/decisions.md)
 - [Status](docs/status.md)
+- [Test Plan](docs/test-plan.md)
 
 ## Buy Me a Coffee
 

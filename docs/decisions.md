@@ -148,3 +148,19 @@ recovery, since the local radio is proven to work by the fact that it
 transmitted. Builds without a radio at all are a separate case: they are
 detected with `gate_radio_is_present()` and idle deliberately, because no amount
 of retrying creates hardware that is not there.
+
+## D013 - Defer the Hardware Watchdog Until the Actuator Failure Policy Exists
+
+Decision: Phase 7 does not enable a hardware watchdog yet.
+
+Reason: the current firmware already bounds command waits, ACK waits, retries,
+radio recovery pacing, and actuator pulse duration. The only intentionally
+unbounded waits are safe operating states: the transmitter waiting for a button
+event, the transmitter waiting for button release, and the receiver waiting for
+packets or radio recovery. Adding a watchdog before defining the installed
+actuator's electrical safe state could hide the more important question: what
+must happen if the output driver is stuck active or the radio never recovers.
+
+Implementation constraint: when a watchdog is added, it must be fed only from a
+health policy that proves the main loop, radio state, and actuator safe state
+are sane. It must not be fed blindly from a timer callback.
