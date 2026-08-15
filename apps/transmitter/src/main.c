@@ -5,8 +5,10 @@
  */
 
 #include <errno.h>
+#include <stdbool.h>
 
 #include <zephyr/devicetree.h>
+#include <zephyr/drivers/gpio.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
@@ -25,6 +27,114 @@ BUILD_ASSERT(DT_NODE_EXISTS(DT_ALIAS(gate_status_ok)),
 	     "board overlay must define the gate-status-ok alias");
 BUILD_ASSERT(DT_NODE_EXISTS(DT_ALIAS(gate_status_error)),
 	     "board overlay must define the gate-status-error alias");
+
+static const struct gpio_dt_spec button = GPIO_DT_SPEC_GET(DT_ALIAS(gate_button), gpios);
+static const struct gpio_dt_spec status_ok =
+	GPIO_DT_SPEC_GET(DT_ALIAS(gate_status_ok), gpios);
+static const struct gpio_dt_spec status_error =
+	GPIO_DT_SPEC_GET(DT_ALIAS(gate_status_error), gpios);
+
+static bool button_is_pressed(void)
+{
+	int raw = gpio_pin_get_raw(button.port, button.pin);
+
+	if (raw < 0) {
+		LOG_ERR("TX button read failed: %d", raw);
+		return false;
+	}
+
+	if ((button.dt_flags & GPIO_ACTIVE_LOW) != 0) {
+		return raw == 0;
+	}
+
+	return raw != 0;
+}
+
+static void set_status_outputs(bool ok, bool error)
+{
+	int ret;
+
+	ret = gpio_pin_set_dt(&status_ok, ok ? 1 : 0);
+	if (ret < 0) {
+		LOG_ERR("TX success LED set failed: %d", ret);
+	}
+
+	ret = gpio_pin_set_dt(&status_error, error ? 1 : 0);
+	if (ret < 0) {
+		LOG_ERR("TX error LED set failed: %d", ret);
+	}
+}
+
+static int tx_io_init(void)
+{
+	int ret;
+
+	if (!gpio_is_ready_dt(&button)) {
+		LOG_ERR("TX button GPIO is not ready");
+		return -ENODEV;
+	}
+
+	if (!gpio_is_ready_dt(&status_ok)) {
+		LOG_ERR("TX success LED GPIO is not ready");
+		return -ENODEV;
+	}
+
+	if (!gpio_is_ready_dt(&status_error)) {
+		LOG_ERR("TX error LED GPIO is not ready");
+		return -ENODEV;
+	}
+
+	ret = gpio_pin_configure_dt(&button, GPIO_INPUT);
+	if (ret < 0) {
+		LOG_ERR("TX button configure failed: %d", ret);
+		return ret;
+	}
+
+	ret = gpio_pin_configure_dt(&status_ok, GPIO_OUTPUT_INACTIVE);
+	if (ret < 0) {
+		LOG_ERR("TX success LED configure failed: %d", ret);
+		return ret;
+	}
+
+	ret = gpio_pin_configure_dt(&status_error, GPIO_OUTPUT_INACTIVE);
+	if (ret < 0) {
+		LOG_ERR("TX error LED configure failed: %d", ret);
+		return ret;
+	}
+
+	set_status_outputs(false, false);
+
+	return 0;
+}
+
+static void wait_for_button_state(bool pressed)
+{
+	for (;;) {
+		if (button_is_pressed() == pressed) {
+			k_sleep(K_MSEC(CONFIG_GATE_TX_BUTTON_DEBOUNCE_MS));
+
+			if (button_is_pressed() == pressed) {
+				return;
+			}
+		}
+
+		k_sleep(K_MSEC(CONFIG_GATE_TX_BUTTON_POLL_MS));
+	}
+}
+
+static void indicate_success(void)
+{
+	set_status_outputs(true, false);
+	k_sleep(K_MSEC(CONFIG_GATE_TX_SUCCESS_LED_MS));
+	set_status_outputs(false, false);
+}
+
+static void indicate_error(void)
+{
+	set_status_outputs(false, true);
+	k_sleep(K_MSEC(CONFIG_GATE_TX_ERROR_LED_MS));
+	set_status_outputs(false, false);
+}
 
 static int send_command(const struct gate_packet *packet)
 {
@@ -211,10 +321,17 @@ int main(void)
 {
 	uint32_t sequence = GATE_SEQUENCE_NONE;
 	uint32_t radio_failures = 0u;
+	int ret;
 
 	LOG_INF("TX boot");
 	LOG_INF("TX protocol version=%u packet=%u bytes command=%s", gate_protocol_version(),
 		GATE_PROTOCOL_PACKET_SIZE, gate_command_name(GATE_COMMAND_TRIGGER));
+
+	ret = tx_io_init();
+	if (ret < 0) {
+		LOG_ERR("TX I/O init failed: %d", ret);
+		return 0;
+	}
 
 	if (!gate_radio_is_present()) {
 		LOG_WRN("TX has no LoRa radio in this build, idling");
@@ -226,7 +343,10 @@ int main(void)
 
 	for (;;) {
 		struct gate_packet packet;
-		int ret;
+
+		LOG_INF("TX ready, waiting for button");
+		wait_for_button_state(true);
+		LOG_INF("TX button pressed");
 
 		sequence = gate_protocol_next_sequence(sequence);
 		gate_protocol_init_command(&packet, CONFIG_GATE_TX_DEVICE_ID, sequence,
@@ -244,7 +364,14 @@ int main(void)
 			note_radio_failure(&radio_failures);
 		}
 
-		k_sleep(K_MSEC(CONFIG_GATE_TX_SEND_INTERVAL_MS));
+		if (ret == 0) {
+			indicate_success();
+		} else {
+			indicate_error();
+		}
+
+		LOG_INF("TX waiting for button release");
+		wait_for_button_state(false);
 	}
 
 	return 0;

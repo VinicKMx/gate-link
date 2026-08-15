@@ -28,6 +28,13 @@ config GATE_RX_RECEIVE_TIMEOUT_MS
 	help
 	  Timeout used while waiting for bench LoRa packets.
 
+config GATE_RX_ACTUATOR_PULSE_MS
+	int "Actuator output pulse in milliseconds"
+	default 300
+	range 1 10000
+	help
+	  Time the actuator output stays active for one accepted trigger command.
+
 endmenu
 
 rsource "../../common/Kconfig"

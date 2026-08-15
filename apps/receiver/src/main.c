@@ -5,8 +5,10 @@
  */
 
 #include <errno.h>
+#include <stdbool.h>
 
 #include <zephyr/devicetree.h>
+#include <zephyr/drivers/gpio.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
@@ -24,6 +26,76 @@ BUILD_ASSERT(DT_NODE_EXISTS(DT_ALIAS(gate_actuator)),
 	     "board overlay must define the gate-actuator alias");
 BUILD_ASSERT(DT_NODE_EXISTS(DT_ALIAS(gate_status)),
 	     "board overlay must define the gate-status alias");
+
+static const struct gpio_dt_spec actuator = GPIO_DT_SPEC_GET(DT_ALIAS(gate_actuator), gpios);
+static const struct gpio_dt_spec status_led = GPIO_DT_SPEC_GET(DT_ALIAS(gate_status), gpios);
+
+static void set_status_led(bool enabled)
+{
+	int ret = gpio_pin_set_dt(&status_led, enabled ? 1 : 0);
+
+	if (ret < 0) {
+		LOG_ERR("RX status LED set failed: %d", ret);
+	}
+}
+
+static int rx_io_init(void)
+{
+	int ret;
+
+	if (!gpio_is_ready_dt(&actuator)) {
+		LOG_ERR("RX actuator GPIO is not ready");
+		return -ENODEV;
+	}
+
+	if (!gpio_is_ready_dt(&status_led)) {
+		LOG_ERR("RX status LED GPIO is not ready");
+		return -ENODEV;
+	}
+
+	ret = gpio_pin_configure_dt(&actuator, GPIO_OUTPUT_INACTIVE);
+	if (ret < 0) {
+		LOG_ERR("RX actuator configure failed: %d", ret);
+		return ret;
+	}
+
+	ret = gpio_pin_configure_dt(&status_led, GPIO_OUTPUT_INACTIVE);
+	if (ret < 0) {
+		LOG_ERR("RX status LED configure failed: %d", ret);
+		return ret;
+	}
+
+	ret = gpio_pin_set_dt(&actuator, 0);
+	if (ret < 0) {
+		LOG_ERR("RX actuator set failed: %d", ret);
+		return ret;
+	}
+
+	set_status_led(false);
+
+	return 0;
+}
+
+static int actuator_trigger(void)
+{
+	int ret;
+
+	ret = gpio_pin_set_dt(&actuator, 1);
+	if (ret < 0) {
+		LOG_ERR("RX actuator ON failed: %d", ret);
+		return ret;
+	}
+
+	k_sleep(K_MSEC(CONFIG_GATE_RX_ACTUATOR_PULSE_MS));
+
+	ret = gpio_pin_set_dt(&actuator, 0);
+	if (ret < 0) {
+		LOG_ERR("RX actuator OFF failed: %d", ret);
+		return ret;
+	}
+
+	return 0;
+}
 
 static int send_ack(const struct gate_packet *command)
 {
@@ -119,6 +191,12 @@ int main(void)
 		GATE_PROTOCOL_PACKET_SIZE, gate_command_name(GATE_COMMAND_TRIGGER));
 	gate_sequence_tracker_init(&sequence_trackers[0], CONFIG_GATE_RX_ACCEPTED_DEVICE_ID);
 
+	ret = rx_io_init();
+	if (ret < 0) {
+		LOG_ERR("RX I/O init failed: %d", ret);
+		return 0;
+	}
+
 	if (!gate_radio_is_present()) {
 		LOG_WRN("RX has no LoRa radio in this build, idling");
 		k_sleep(K_FOREVER);
@@ -173,11 +251,19 @@ int main(void)
 			gate_message_type_name(packet.type), gate_command_name(packet.command),
 			packet.sequence, packet.device_id, rx.rssi, rx.snr);
 
+		set_status_led(true);
+
 		switch (gate_sequence_filter_command(sequence_trackers,
 						     ARRAY_SIZE(sequence_trackers), &packet)) {
 		case GATE_SEQUENCE_DECISION_EXECUTE:
-			LOG_INF("RX would trigger actuator seq=%u device=%u", packet.sequence,
+			LOG_INF("RX actuator trigger seq=%u device=%u", packet.sequence,
 				packet.device_id);
+			ret = actuator_trigger();
+			if (ret < 0) {
+				LOG_ERR("RX actuator failed seq=%u ret=%d", packet.sequence, ret);
+				set_status_led(false);
+				continue;
+			}
 			break;
 		case GATE_SEQUENCE_DECISION_DUPLICATE:
 			LOG_WRN("RX duplicate seq=%u device=%u, actuator suppressed",
@@ -188,17 +274,20 @@ int main(void)
 			    "RX ignored command from device=%u seq=%u, accepting only device=%u",
 			    packet.device_id, packet.sequence,
 			    (unsigned int)CONFIG_GATE_RX_ACCEPTED_DEVICE_ID);
+			set_status_led(false);
 			continue;
 		case GATE_SEQUENCE_DECISION_INVALID:
 		default:
 			LOG_WRN("RX ignored non-command packet type=%s seq=%u device=%u",
 				gate_message_type_name(packet.type), packet.sequence,
 				packet.device_id);
+			set_status_led(false);
 			continue;
 		}
 
 		/* A failed ACK is a local radio problem, not a link problem. */
 		ret = send_ack(&packet);
+		set_status_led(false);
 		if (ret < 0) {
 			LOG_ERR("RX failed to acknowledge seq=%u ret=%d", packet.sequence, ret);
 			note_radio_failure(&radio_failures);

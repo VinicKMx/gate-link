@@ -16,13 +16,20 @@ config GATE_TX_DEVICE_ID
 	help
 	  Device id written into bench COMMAND packets.
 
-config GATE_TX_SEND_INTERVAL_MS
-	int "Bench command send interval in milliseconds"
-	default 2000
-	range 500 60000
+config GATE_TX_BUTTON_POLL_MS
+	int "Button poll interval in milliseconds"
+	default 10
+	range 1 100
 	help
-	  Temporary bench interval used before the physical button module is
-	  implemented.
+	  Interval used while polling the physical trigger button.
+
+config GATE_TX_BUTTON_DEBOUNCE_MS
+	int "Button debounce interval in milliseconds"
+	default 40
+	range 1 1000
+	help
+	  Time a button level must remain unchanged before it is treated as a
+	  logical press or release.
 
 config GATE_TX_ACK_TIMEOUT_MS
 	int "ACK wait timeout in milliseconds"
@@ -40,6 +47,20 @@ config GATE_TX_MAX_RETRIES
 	  Number of retransmissions after the initial send when no matching ACK is
 	  received. A value of 3 means up to 4 transmissions of the same sequence:
 	  the initial send plus 3 retries.
+
+config GATE_TX_SUCCESS_LED_MS
+	int "Success LED indication time in milliseconds"
+	default 500
+	range 1 10000
+	help
+	  Time the success status output stays active after a matching ACK.
+
+config GATE_TX_ERROR_LED_MS
+	int "Error LED indication time in milliseconds"
+	default 1200
+	range 1 10000
+	help
+	  Time the error status output stays active after a command fails.
 
 endmenu
 
