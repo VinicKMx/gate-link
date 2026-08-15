@@ -77,6 +77,8 @@ Observed with the application firmware running on both boards:
   duplicate;
 - RX detects a powered-down RFM95W during receive timeouts, retries radio
   recovery, and receives commands again after the module power returns;
+- TX recovers immediately after a local radio send failure and sends normally
+  on the next button press after the module answers again;
 - bench RSSI/SNR is visible in serial logs.
 
 The GPIO4 button and the GPIO25/GPIO33 LEDs were first validated electrically
@@ -133,13 +135,17 @@ progress. Non-matching packets are ignored.
 
 Both applications treat a missing or failing radio as recoverable. At boot they
 retry the probe every `CONFIG_GATE_RADIO_RECOVERY_INTERVAL_MS` until the module
-answers. At runtime, `CONFIG_GATE_RADIO_RECOVERY_THRESHOLD` consecutive radio
-errors trigger a re-probe followed by a fresh modem configuration; the receiver
-returns to RX mode as part of that. The receiver also refreshes RX mode after
-receive timeouts, because a powered-down SX1276 can otherwise look like an idle
-link rather than a hard radio error. An unanswered command is a link failure,
-not a radio failure, and never triggers transmitter recovery. A build with no
-radio configured at all idles on purpose (D012, D015).
+answers. At runtime, the receiver uses
+`CONFIG_GATE_RADIO_RECOVERY_THRESHOLD` to avoid re-probing after a single
+unexpected radio error, and it always returns to RX mode after recovery. The
+receiver also refreshes RX mode after receive timeouts, because a powered-down
+SX1276 can otherwise look like an idle link rather than a hard radio error.
+The transmitter recovers immediately after a local radio failure during a
+command, so a TX module that loses power while idle does not require multiple
+button presses to heal. An unanswered command is a link failure, not a radio
+failure, and never triggers transmitter recovery. A local packet construction
+error is also not recovered through the radio. A build with no radio configured
+at all idles on purpose (D012, D015, D016).
 
 ## Next Criteria
 

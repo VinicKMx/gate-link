@@ -19,6 +19,7 @@ proves the wiring, not this firmware.
 | TEST-005 | Invalid or oversized packet   | 2026-08-15 | pass (twister) |
 | TEST-006 | Incorrect ACK                 | 2026-08-15 | pass (twister) |
 | TEST-007 | Radio failure recovery        | 2026-08-15 | pass        |
+| TEST-008 | TX idle radio power loss      | 2026-08-15 | pass        |
 
 TEST-005 and TEST-006 run under twister rather than on the bench; fill in the
 date of the last passing run. Update this table in the same commit that runs a
@@ -42,6 +43,12 @@ test, so `docs/status.md` never claims more than this table supports.
   after receive timeouts. Retest passed: RX detected version `0x00`, retried at
   the configured interval, detected version `0x12` after VCC returned,
   re-entered RX mode, received the next command, and sent ACK.
+- TEST-008: removing TX RFM95W VCC while TX was idle and pressing the button
+  produced a local send failure (`ret=-11`). TX reported the command failure,
+  started radio recovery in the same button cycle, detected SX1276 version
+  `0x12` during recovery, and returned to ready without requiring repeated
+  failed presses. The next button press sent `seq=2`; RX triggered the actuator
+  and ACK returned on the first attempt.
 
 ## TEST-001 - Normal Trigger Flow
 
@@ -141,3 +148,20 @@ Then:
 - logs show paced recovery attempts;
 - RX re-enters receive mode after recovery;
 - TX can send again after recovery.
+
+## TEST-008 - TX Idle Radio Power Loss
+
+When:
+
+- TX and RX are running normally;
+- only the TX RFM95W loses VCC while the TX ESP32 stays powered;
+- the TX button is pressed once;
+- TX RFM95W VCC is restored.
+
+Then:
+
+- TX reports the first command as failed;
+- TX starts radio recovery on that same button cycle;
+- if the module remains unreadable, TX logs paced recovery attempts;
+- TX logs radio recovery after the module answers again;
+- the next TX button press succeeds without requiring repeated failed presses.

@@ -205,3 +205,22 @@ path but must verify that the chip still answers and that RX mode is
 programmed. If probing fails, the receiver enters the same paced recovery loop
 used for other radio failures and only returns to packet handling after the
 module answers and RX mode is configured again.
+
+## D016 - Recover TX Radio Errors Immediately
+
+Decision: the transmitter recovers the radio immediately after a local radio
+error during command handling. It does not wait for the runtime recovery
+threshold used by the receiver.
+
+Reason: the transmitter already separates an unanswered command from a local
+radio failure. ACK timeout returns `-EAGAIN` and is treated as a link failure,
+so it never reaches radio recovery. Packet construction errors are local
+software failures, and re-probing the radio cannot fix them. The remaining
+command errors are probe, modem configuration, send, or receive failures on the
+local radio, where immediate recovery is the useful behavior. Delaying that by
+multiple button presses only creates extra visible failures for the user.
+
+Implementation constraint: transmitter recovery must not run for `-EAGAIN`
+or local packet construction errors. It must run for local radio errors in the
+same button cycle, after the command failure has already been indicated to the
+user.
