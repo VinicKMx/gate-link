@@ -5,8 +5,10 @@ Gate Link is split into two Zephyr applications and shared modules.
 ```text
 apps/transmitter
 apps/receiver
+common/auth
 common/protocol
 common/sequence
+common/storage
 common/radio
 ```
 
@@ -20,8 +22,11 @@ Responsibilities:
 - debounce the physical signal;
 - convert one press into one logical command;
 - assign a sequence number;
+- persist the assigned sequence before transmission;
+- authenticate the command packet;
 - send a LoRa command packet;
 - wait for a matching ACK;
+- authenticate the ACK;
 - retry within configured limits;
 - expose status through logs and LEDs.
 
@@ -46,6 +51,8 @@ Responsibilities:
 - receive LoRa packets;
 - parse protocol packets;
 - reject invalid packets;
+- reject packets with invalid authentication tags;
+- reject authenticated replay packets older than the last accepted sequence;
 - detect commands already executed;
 - trigger the actuator once for each new valid command;
 - send ACKs for valid commands, including duplicates already executed;
@@ -69,14 +76,34 @@ commands, encode/decode, and validation rules.
 It does not call Zephyr LoRa APIs and does not know about GPIOs, buttons, LEDs,
 or actuator hardware.
 
+## Shared Authentication Module
+
+`common/auth` owns the packet authentication tag. It uses mbedTLS
+HMAC-SHA256, truncates the result to the fixed 8-byte `auth_tag`, and verifies
+tags with a constant-time comparison.
+
+It does not know about LoRa, GPIO, button state, retry timing, or actuator
+behavior.
+
 ## Shared Sequence Module
 
-`common/sequence` owns receiver-side duplicate suppression. It tracks the last
-accepted sequence per accepted transmitter identity, decides whether a valid
-command should cross the actuator boundary, and records acceptance only after
-the receiver confirms the command should not be retried as a fresh execution.
+`common/sequence` owns receiver-side duplicate and replay decisions. It tracks
+the last accepted sequence per transmitter, allows the exact same sequence to be
+acknowledged as a duplicate, accepts only higher sequences as new commands, and
+rejects older sequences as replay.
+
+Duplicate handling is a reliability rule and replay rejection is a security
+rule, but they read the same counter, so they live in one module rather than
+two that could disagree about what "already seen" means.
 
 It does not send ACKs, receive radio packets, or drive actuator hardware.
+
+## Shared Counter Storage
+
+`common/storage` owns the NVS-backed monotonic counters used by ESP32 builds.
+The transmitter stores the last issued command sequence before sending a packet.
+The receiver stores the last accepted sequence after the actuator pulse has
+completed. This keeps replay policy out of the radio and actuator code.
 
 ## Radio Boundary
 

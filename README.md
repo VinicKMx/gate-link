@@ -37,17 +37,18 @@ The system is designed around unreliable wireless communication:
 - a command packet can be lost;
 - an ACK can be lost;
 - a command can be received more than once;
+- a captured packet can be replayed later;
 - a button can bounce or remain pressed;
 - a stale or unrelated ACK can arrive after another command is already active;
 - radio configuration must vary by hardware and region.
 
 ## Current Status
 
-The bench firmware is code-complete and bench-validated through Phase 7 on the
-current LED-only hardware. Physical button input, status LEDs, actuator LED
-pulse, structured LoRa packets, ACK, timeout, retry, receiver duplicate
-suppression, and software radio recovery are implemented and have passed the
-manual bench tests recorded in [docs/test-plan.md](docs/test-plan.md).
+The firmware is code-complete through command authentication and replay
+resistance. The LED-only bench command chain has passed the manual tests
+recorded in [docs/test-plan.md](docs/test-plan.md). Authentication and replay
+logic are covered by host tests, and the normal authenticated TX-to-RX flow has
+been validated on the ESP32 bench pair with a local shared key.
 
 Implemented now:
 
@@ -59,6 +60,11 @@ Implemented now:
   devicetree aliases;
 - TX sends binary `COMMAND(TRIGGER, sequence)` packets over LoRa;
 - RX decodes and validates the protocol packet;
+- TX and RX authenticate `COMMAND` and `ACK` packets with HMAC-SHA256 truncated
+  to the 8-byte packet `auth_tag`;
+- TX persists the last issued command sequence before transmission;
+- RX persists the last accepted sequence and rejects older authenticated
+  commands as replay;
 - RX pulses the actuator LED once for each non-duplicate valid command;
 - RX replies with `ACK(sequence)`;
 - TX reports success only for the ACK matching the command in progress;
@@ -68,15 +74,17 @@ Implemented now:
   still replies with ACK;
 - receiver radio recovery was bench-tested by removing RFM95W VCC at runtime
   and confirming recovery after power returned;
-- host tests cover invalid packets, incorrect ACK matching, sequence wraparound,
-  TX reboot-style sequence restart, duplicate commands, and current RX reset
-  behavior;
+- host tests cover invalid packets, incorrect ACK matching, authenticated
+  packet tags, replay decisions, duplicate suppression, and counter wrap
+  rejection;
 - both applications recover from radio failures instead of parking themselves
   idle, at boot and at runtime.
 
-Not implemented yet:
+Still not implemented:
 
-- cryptographic authentication.
+- range testing;
+- real actuator hardware;
+- production key provisioning outside Kconfig/firmware image.
 
 See [docs/status.md](docs/status.md) for the phase checklist.
 
@@ -89,8 +97,10 @@ apps/
   receiver/        Zephyr application for the actuator-side device
     boards/        Devicetree overlays: actuator output, LoRa wiring
 common/
+  auth/            HMAC-SHA256 packet authentication
   protocol/        Packet model, encode/decode, and validation
-  sequence/        Receiver-side command duplicate suppression
+  sequence/        Authenticated replay filtering and duplicate suppression
+  storage/         NVS-backed monotonic counters for ESP32 builds
   radio/           Thin wrapper over the Zephyr LoRa APIs
 docs/
   architecture.md  System boundaries and component responsibilities
@@ -100,7 +110,7 @@ docs/
   test-plan.md     Manual bench validation procedures
 tests/
   protocol/        Host tests for packet encoding, validation, and ACK matching
-  sequence/        Host tests for duplicate suppression decisions
+  sequence/        Host tests for duplicate and replay decisions
 scripts/
   build_all.sh
 ```
@@ -115,8 +125,10 @@ scripts/
 - LoRa parameters are configuration, not application constants.
 - Sequence numbers are required to match ACKs and prevent duplicate actuator
   pulses after retransmission.
-- Security-sensitive fields are part of the packet design so command
-  authentication can be added without redesigning the protocol.
+- `COMMAND` and `ACK` packets are authenticated before application state is
+  changed.
+- Real shared keys belong in local, unversioned build configuration. The
+  repository default intentionally contains no usable key.
 
 See [docs/decisions.md](docs/decisions.md) for the full decision record.
 
@@ -148,6 +160,17 @@ cd <zephyr-workspace>
 west update
 ```
 
+The authenticated firmware requires a local shared key. Create an untracked
+configuration fragment such as:
+
+```conf
+CONFIG_GATE_AUTH_KEY_HEX="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+```
+
+Use a generated 64-hex-character value for real testing; the value above is
+only a format example. The `.gitignore` excludes `local*.conf` and
+`*.secret.conf` so the bench key is not committed.
+
 For a host build, which defaults to `native_sim/native/64`:
 
 ```sh
@@ -159,7 +182,9 @@ To build for the ESP32 bench hardware:
 
 ```sh
 cd <zephyr-workspace>
-BOARD=esp32_devkitc_wroom/esp32/procpu <path-to-gate-link>/scripts/build_all.sh
+BOARD=esp32_devkitc_wroom/esp32/procpu \
+EXTRA_CONF_FILE=<path-to-gate-link>/local-auth.conf \
+<path-to-gate-link>/scripts/build_all.sh
 ```
 
 The ESP32 target additionally needs the Espressif binary blobs, once per
@@ -174,11 +199,13 @@ Individual builds:
 ```sh
 west build -p always -b native_sim/native/64 \
   -s <path-to-gate-link>/apps/transmitter \
-  -d build/transmitter
+  -d build/transmitter -- \
+  -DEXTRA_CONF_FILE=<path-to-gate-link>/local-auth.conf
 
 west build -p always -b native_sim/native/64 \
   -s <path-to-gate-link>/apps/receiver \
-  -d build/receiver
+  -d build/receiver -- \
+  -DEXTRA_CONF_FILE=<path-to-gate-link>/local-auth.conf
 ```
 
 Board overlays are named after the board target, so a board is only supported
@@ -200,8 +227,20 @@ west twister -T <path-to-gate-link>/tests -p native_sim/native/64
 After selecting the real ESP32 board and creating the required board overlays:
 
 ```sh
-west flash -d build/transmitter
-west flash -d build/receiver
+west flash -d build/transmitter --esp-device /dev/ttyUSB0
+west flash -d build/receiver --esp-device /dev/ttyUSB1
+```
+
+For the current ESP32 DevKitC bench target, authenticated operation also needs
+the storage partition to be erased during first provisioning, or after an
+intentional reprovisioning event:
+
+```sh
+python3 <zephyr-workspace>/modules/hal/espressif/tools/esptool_py/esptool.py \
+  --port /dev/ttyUSB0 erase_region 0x250000 0x6000
+
+python3 <zephyr-workspace>/modules/hal/espressif/tools/esptool_py/esptool.py \
+  --port /dev/ttyUSB1 erase_region 0x250000 0x6000
 ```
 
 ## Documentation

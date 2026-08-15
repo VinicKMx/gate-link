@@ -224,3 +224,65 @@ Implementation constraint: transmitter recovery must not run for `-EAGAIN`
 or local packet construction errors. It must run for local radio errors in the
 same button cycle, after the command failure has already been indicated to the
 user.
+
+## D017 - Authenticate Every Protocol Packet
+
+Decision: every `COMMAND` and `ACK` packet is authenticated with HMAC-SHA256
+using a shared 256-bit key, truncated to the existing 8-byte `auth_tag`.
+
+Reason: the link is LoRa point-to-point over an observable radio channel. A
+device id only addresses a transmitter; it does not prove that the sender knows
+the installation secret. ACKs also need authentication so a forged success
+packet cannot make the transmitter report that a command worked.
+
+Implementation constraint: authentication lives in `common/auth`, uses
+mbedTLS, and signs only the stable protocol bytes before `auth_tag`. Application
+code must verify authentication before triggering the actuator or accepting an
+ACK. The shared key must not be committed to the repository.
+
+## D018 - Use Persisted Monotonic Sequences for Replay Resistance
+
+Decision: authenticated operation uses monotonic sequence numbers persisted in
+NVS. The transmitter stores the next sequence before sending, and the receiver
+stores the last accepted sequence after the actuator pulse completes but before
+sending ACK.
+
+Reason: authentication alone proves who made a packet, not whether it is fresh.
+A captured valid packet would still carry a valid tag. Persisted monotonic
+counters let the receiver reject older authenticated packets while still
+acknowledging an exact retransmission of the last accepted sequence when an ACK
+was lost.
+
+Implementation constraint: replay filtering uses equality for the last accepted
+sequence to identify retransmission, greater-than for new commands, and
+less-than for replay. The counter does not wrap under authenticated operation;
+reaching `UINT32_MAX`, erasing NVS, or replacing one board requires
+reprovisioning. If the receiver cannot persist an accepted sequence after the
+actuator pulse, it withholds ACK and does not return to normal command handling
+until the write succeeds.
+
+Known limit: this rejects packets the receiver has already passed, not packets
+it never heard. A captured command that was jammed before delivery stays valid
+until a larger sequence is accepted. Closing that requires receiver-issued
+freshness (challenge-response) and is deliberately out of scope for protocol
+version 1; `SECURITY.md` documents the consequence for installations.
+
+## D019 - Require Provisioning at Build Time, Not at Boot
+
+Decision: a build that has a LoRa radio must have a 64-character
+`CONFIG_GATE_AUTH_KEY_HEX` and `CONFIG_GATE_COUNTER_STORE_NVS` enabled, checked
+with `BUILD_ASSERT`. Builds with no `lora0` alias are exempt and keep idling as
+before.
+
+Reason: this is the same argument as D014. An unprovisioned image is not
+something a device can recover from at runtime, and a firmware that compiles,
+flashes, boots, logs one error, and then does nothing is the failure mode this
+project treats as worst: indistinguishable from a working unit until someone
+presses the button. The check costs nothing and moves the error to the machine
+that can still fix it.
+
+Implementation constraint: only the key length is verifiable at build time, so
+`gate_auth_key_from_hex()` still validates the characters at startup. The
+build-time condition is `GATE_RADIO_PRESENT` from `common/radio/gate_radio.h`,
+which is the compile-time twin of `gate_radio_is_present()`; the two must stay
+in agreement.
