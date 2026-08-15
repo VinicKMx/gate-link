@@ -9,6 +9,18 @@ module = GATE_RX
 module-str = gate_rx
 source "subsys/logging/Kconfig.template.log_config"
 
+config GATE_RX_ACCEPTED_DEVICE_ID
+	int "Accepted transmitter device id"
+	default 1
+	range 1 2147483647
+	help
+	  Device id of the transmitter this receiver answers. Commands carrying
+	  any other device id are ignored without an ACK. Phase 6 tracks the
+	  last executed sequence for this identity.
+
+	  This is addressing, not authentication: a device id is trivial to
+	  spoof and only phase 8 makes a command unforgeable.
+
 config GATE_RX_RECEIVE_TIMEOUT_MS
 	int "Bench receive timeout in milliseconds"
 	default 10000

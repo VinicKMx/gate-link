@@ -53,37 +53,33 @@ static struct lora_modem_config make_lora_config(bool tx)
 	};
 }
 
+/*
+ * Read REG_VERSION directly rather than trusting driver init: Zephyr's sx127x
+ * driver reads the same register but only logs the value, so a bus that
+ * answers 0x00 on every byte still initializes without an error (D011).
+ *
+ * An SX1276 register read is the address byte with bit 7 clear followed by one
+ * dummy byte, sent as a single buffer so NSS stays low for the whole pair.
+ */
 static int sx1276_read_version(uint8_t *version)
 {
-	uint8_t reg = SX127X_REG_VERSION;
-	uint8_t value = 0;
-	const struct spi_buf tx_buf[] = {
-		{
-			.buf = &reg,
-			.len = sizeof(reg),
-		},
-		{
-			.buf = &value,
-			.len = sizeof(value),
-		},
+	uint8_t tx_data[] = {SX127X_REG_VERSION, 0x00};
+	uint8_t rx_data[sizeof(tx_data)];
+	const struct spi_buf tx_buf = {
+		.buf = tx_data,
+		.len = sizeof(tx_data),
 	};
-	struct spi_buf rx_buf[] = {
-		{
-			.buf = &reg,
-			.len = sizeof(reg),
-		},
-		{
-			.buf = &value,
-			.len = sizeof(value),
-		},
+	const struct spi_buf rx_buf = {
+		.buf = rx_data,
+		.len = sizeof(rx_data),
 	};
 	const struct spi_buf_set tx = {
-		.buffers = tx_buf,
-		.count = ARRAY_SIZE(tx_buf),
+		.buffers = &tx_buf,
+		.count = 1u,
 	};
 	const struct spi_buf_set rx = {
-		.buffers = rx_buf,
-		.count = ARRAY_SIZE(rx_buf),
+		.buffers = &rx_buf,
+		.count = 1u,
 	};
 	int ret;
 
@@ -92,7 +88,7 @@ static int sx1276_read_version(uint8_t *version)
 		return ret;
 	}
 
-	*version = value;
+	*version = rx_data[1];
 	return 0;
 }
 
@@ -178,6 +174,16 @@ int gate_radio_receive(uint8_t *data, size_t capacity, k_timeout_t timeout,
 	ret = lora_recv(lora_dev, data, (uint8_t)capacity, timeout, &rssi, &snr);
 	if (ret < 0) {
 		return ret;
+	}
+
+	/*
+	 * lora_recv() only shrinks the length it reports when the frame is
+	 * smaller than the capacity it was given, so a frame filling the buffer
+	 * may have been truncated from something longer. Reject it rather than
+	 * hand up a shortened frame that could still pass packet validation.
+	 */
+	if ((size_t)ret >= capacity) {
+		return -EMSGSIZE;
 	}
 
 	if (result != NULL) {

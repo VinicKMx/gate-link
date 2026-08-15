@@ -24,6 +24,14 @@ config GATE_TX_SEND_INTERVAL_MS
 	  Temporary bench interval used before the physical button module is
 	  implemented.
 
+config GATE_TX_ACK_TIMEOUT_MS
+	int "ACK wait timeout in milliseconds"
+	default 2000
+	range 100 10000
+	help
+	  Time spent listening for the ACK that matches the command currently in
+	  progress. Retries are added in a later phase.
+
 endmenu
 
 rsource "../../common/Kconfig"
