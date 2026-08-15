@@ -29,12 +29,19 @@ static struct gate_sequence_tracker *find_tracker(struct gate_sequence_tracker *
 	return NULL;
 }
 
-enum gate_sequence_decision gate_sequence_filter_command(struct gate_sequence_tracker *trackers,
-							 size_t tracker_count,
-							 const struct gate_packet *command)
+/*
+ * Shared entry check for both public functions, so a command can never be
+ * recorded under rules looser than the ones that let it through the filter.
+ *
+ * Returns GATE_SEQUENCE_DECISION_INVALID or GATE_SEQUENCE_DECISION_IGNORE when
+ * the command must not be acted on, leaving @p tracker untouched. Any other
+ * value means @p tracker points at the state for this transmitter identity.
+ */
+static enum gate_sequence_decision resolve_tracker(struct gate_sequence_tracker *trackers,
+						   size_t tracker_count,
+						   const struct gate_packet *command,
+						   struct gate_sequence_tracker **tracker)
 {
-	struct gate_sequence_tracker *tracker;
-
 	if (trackers == NULL || tracker_count == 0u || command == NULL) {
 		return GATE_SEQUENCE_DECISION_INVALID;
 	}
@@ -47,9 +54,24 @@ enum gate_sequence_decision gate_sequence_filter_command(struct gate_sequence_tr
 		return GATE_SEQUENCE_DECISION_INVALID;
 	}
 
-	tracker = find_tracker(trackers, tracker_count, command->device_id);
-	if (tracker == NULL) {
+	*tracker = find_tracker(trackers, tracker_count, command->device_id);
+	if (*tracker == NULL) {
 		return GATE_SEQUENCE_DECISION_IGNORE;
+	}
+
+	return GATE_SEQUENCE_DECISION_EXECUTE;
+}
+
+enum gate_sequence_decision gate_sequence_filter_command(struct gate_sequence_tracker *trackers,
+							 size_t tracker_count,
+							 const struct gate_packet *command)
+{
+	struct gate_sequence_tracker *tracker;
+	enum gate_sequence_decision decision;
+
+	decision = resolve_tracker(trackers, tracker_count, command, &tracker);
+	if (decision != GATE_SEQUENCE_DECISION_EXECUTE) {
+		return decision;
 	}
 
 	if (tracker->has_last_sequence && tracker->last_sequence == command->sequence) {
@@ -64,20 +86,8 @@ bool gate_sequence_accept_command(struct gate_sequence_tracker *trackers, size_t
 {
 	struct gate_sequence_tracker *tracker;
 
-	if (trackers == NULL || tracker_count == 0u || command == NULL) {
-		return false;
-	}
-
-	if (gate_protocol_validate(command) != GATE_PROTOCOL_OK) {
-		return false;
-	}
-
-	if (command->type != GATE_MESSAGE_TYPE_COMMAND) {
-		return false;
-	}
-
-	tracker = find_tracker(trackers, tracker_count, command->device_id);
-	if (tracker == NULL) {
+	if (resolve_tracker(trackers, tracker_count, command, &tracker) !=
+	    GATE_SEQUENCE_DECISION_EXECUTE) {
 		return false;
 	}
 

@@ -39,6 +39,10 @@ config GATE_TX_ACK_TIMEOUT_MS
 	  Time spent listening for the ACK that matches the command currently in
 	  progress before the same command sequence is retransmitted.
 
+	  This must cover the receiver's whole turnaround, which includes its
+	  CONFIG_GATE_RX_ACTUATOR_PULSE_MS: the actuator fires before the ACK is
+	  sent. Too short a timeout reports failure for commands that succeeded.
+
 config GATE_TX_MAX_RETRIES
 	int "Maximum command retransmissions"
 	default 3

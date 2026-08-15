@@ -34,9 +34,16 @@
 		lora0 = &lora0;
 	};
 
+	/*
+	 * The firmware reads this pin directly and debounces it in software
+	 * with CONFIG_GATE_TX_BUTTON_DEBOUNCE_MS, because CONFIG_INPUT is not
+	 * enabled and the gpio-keys driver is therefore not built. The node
+	 * exists for its alias and its gpios property only. Do not add
+	 * debounce-interval-ms here: it would be inert and would contradict the
+	 * value that actually applies.
+	 */
 	gate_buttons {
 		compatible = "gpio-keys";
-		debounce-interval-ms = <30>;
 
 		gate_button: gate_button {
 			gpios = <&gpio0 4 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;

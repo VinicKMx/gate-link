@@ -29,25 +29,33 @@ BUILD_ASSERT(DT_NODE_EXISTS(DT_ALIAS(gate_status_error)),
 	     "board overlay must define the gate-status-error alias");
 
 static const struct gpio_dt_spec button = GPIO_DT_SPEC_GET(DT_ALIAS(gate_button), gpios);
-static const struct gpio_dt_spec status_ok =
-	GPIO_DT_SPEC_GET(DT_ALIAS(gate_status_ok), gpios);
+static const struct gpio_dt_spec status_ok = GPIO_DT_SPEC_GET(DT_ALIAS(gate_status_ok), gpios);
 static const struct gpio_dt_spec status_error =
-	GPIO_DT_SPEC_GET(DT_ALIAS(gate_status_error), gpios);
+    GPIO_DT_SPEC_GET(DT_ALIAS(gate_status_error), gpios);
 
-static bool button_is_pressed(void)
+/*
+ * Read the button as a logical level. Zephyr 3.7's ESP32 GPIO path returns the
+ * physical input level here, so the devicetree active-low flag is applied at
+ * this boundary and the rest of the transmitter sees "pressed" as true.
+ *
+ * A read error is reported to the caller instead of being folded into
+ * "released": a button that cannot be read must not look like an idle one.
+ */
+static int button_read(bool *pressed)
 {
-	int raw = gpio_pin_get_raw(button.port, button.pin);
+	int level = gpio_pin_get_raw(button.port, button.pin);
 
-	if (raw < 0) {
-		LOG_ERR("TX button read failed: %d", raw);
-		return false;
+	if (level < 0) {
+		return level;
 	}
 
 	if ((button.dt_flags & GPIO_ACTIVE_LOW) != 0) {
-		return raw == 0;
+		*pressed = (level == 0);
+	} else {
+		*pressed = (level != 0);
 	}
 
-	return raw != 0;
+	return 0;
 }
 
 static void set_status_outputs(bool ok, bool error)
@@ -102,19 +110,42 @@ static int tx_io_init(void)
 		return ret;
 	}
 
-	set_status_outputs(false, false);
-
 	return 0;
 }
 
-static void wait_for_button_state(bool pressed)
+/*
+ * Block until the button holds @p wanted across the debounce interval.
+ *
+ * Read errors keep the loop waiting rather than reporting a state change, so a
+ * broken button never fabricates a command. They are logged once per stretch of
+ * failures: this loop runs every few milliseconds, and logging every read would
+ * bury the console under one repeated line.
+ */
+static void wait_for_button_state(bool wanted)
 {
-	for (;;) {
-		if (button_is_pressed() == pressed) {
-			k_sleep(K_MSEC(CONFIG_GATE_TX_BUTTON_DEBOUNCE_MS));
+	bool error_reported = false;
 
-			if (button_is_pressed() == pressed) {
-				return;
+	for (;;) {
+		bool state;
+		int ret = button_read(&state);
+
+		if (ret < 0) {
+			if (!error_reported) {
+				LOG_ERR("TX button read failed: %d", ret);
+				error_reported = true;
+			}
+		} else {
+			if (error_reported) {
+				LOG_INF("TX button read recovered");
+				error_reported = false;
+			}
+
+			if (state == wanted) {
+				k_sleep(K_MSEC(CONFIG_GATE_TX_BUTTON_DEBOUNCE_MS));
+
+				if (button_read(&state) == 0 && state == wanted) {
+					return;
+				}
 			}
 		}
 
@@ -327,6 +358,10 @@ int main(void)
 	LOG_INF("TX protocol version=%u packet=%u bytes command=%s", gate_protocol_version(),
 		GATE_PROTOCOL_PACKET_SIZE, gate_command_name(GATE_COMMAND_TRIGGER));
 
+	/*
+	 * Unlike a radio failure, this is not retried: an unbindable pin means
+	 * the overlay does not match this board, and no retry creates it (D014).
+	 */
 	ret = tx_io_init();
 	if (ret < 0) {
 		LOG_ERR("TX I/O init failed: %d", ret);

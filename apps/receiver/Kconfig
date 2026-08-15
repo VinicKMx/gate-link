@@ -35,6 +35,11 @@ config GATE_RX_ACTUATOR_PULSE_MS
 	help
 	  Time the actuator output stays active for one accepted trigger command.
 
+	  The pulse runs before the ACK is sent, so it is part of the time the
+	  transmitter spends waiting. Keep it well below the transmitter's
+	  CONFIG_GATE_TX_ACK_TIMEOUT_MS, or every command times out and reports
+	  failure at the transmitter even though the actuator did fire.
+
 endmenu
 
 rsource "../../common/Kconfig"
