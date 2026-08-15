@@ -38,11 +38,23 @@ extern "C" {
 /** Wire format version carried in every packet. */
 #define GATE_PROTOCOL_VERSION 1u
 
-/** Size of the reserved authentication tag, in bytes. */
+/** Size of the authentication tag, in bytes. */
 #define GATE_PROTOCOL_AUTH_TAG_SIZE 8u
 
 /** Size of an encoded packet, in bytes. */
 #define GATE_PROTOCOL_PACKET_SIZE 19u
+
+/*
+ * Number of packet bytes covered by the authentication tag: everything that
+ * precedes the tag itself.
+ *
+ * Derived rather than written out, because signing and verification both read
+ * this value. A literal that drifted from the real tag offset would shrink the
+ * authenticated region on both sides at once, leaving trailing fields forgeable
+ * with every test still passing. gate_protocol.c asserts it against the encoder
+ * layout.
+ */
+#define GATE_PROTOCOL_AUTH_DATA_SIZE (GATE_PROTOCOL_PACKET_SIZE - GATE_PROTOCOL_AUTH_TAG_SIZE)
 
 /** Reserved device id meaning "not assigned"; never valid on the wire. */
 #define GATE_DEVICE_ID_UNASSIGNED 0u
@@ -91,14 +103,13 @@ const char *gate_command_name(uint8_t command);
 const char *gate_protocol_status_name(enum gate_protocol_status status);
 
 /**
- * Fill @p packet as a COMMAND, zeroing the reserved authentication tag.
+ * Fill @p packet as a COMMAND, zeroing the authentication tag.
  */
 void gate_protocol_init_command(struct gate_packet *packet, uint32_t device_id, uint32_t sequence,
 				uint8_t command);
 
 /**
- * Fill @p packet as an ACK echoing @p command, zeroing the reserved
- * authentication tag.
+ * Fill @p packet as an ACK echoing @p command, zeroing the authentication tag.
  */
 void gate_protocol_init_ack(struct gate_packet *packet, uint32_t device_id, uint32_t sequence,
 			    uint8_t command);
@@ -145,12 +156,6 @@ enum gate_protocol_status gate_protocol_decode(const uint8_t *buffer, size_t len
  */
 bool gate_protocol_ack_matches(const struct gate_packet *packet, uint32_t expected_device_id,
 			       uint32_t expected_sequence, uint8_t expected_command);
-
-/**
- * Return the sequence number following @p sequence, skipping the reserved
- * GATE_SEQUENCE_NONE value on wraparound.
- */
-uint32_t gate_protocol_next_sequence(uint32_t sequence);
 
 #ifdef __cplusplus
 }

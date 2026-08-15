@@ -12,14 +12,18 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
+#include <auth/gate_auth.h>
 #include <protocol/gate_protocol.h>
 #include <radio/gate_radio.h>
+#if IS_ENABLED(CONFIG_GATE_COUNTER_STORE_NVS)
+#include <storage/gate_counter_store.h>
+#endif
 
 LOG_MODULE_REGISTER(gate_tx, CONFIG_GATE_TX_LOG_LEVEL);
 
 /*
- * Phase 1 binds these aliases to GPIO handles. Asserting them now keeps a
- * missing or misnamed board overlay a build error instead of a bench surprise.
+ * Board overlays bind these aliases to GPIO handles. Asserting them now keeps
+ * a missing or misnamed overlay a build error instead of a bench surprise.
  */
 BUILD_ASSERT(DT_NODE_EXISTS(DT_ALIAS(gate_button)),
 	     "board overlay must define the gate-button alias");
@@ -28,10 +32,37 @@ BUILD_ASSERT(DT_NODE_EXISTS(DT_ALIAS(gate_status_ok)),
 BUILD_ASSERT(DT_NODE_EXISTS(DT_ALIAS(gate_status_error)),
 	     "board overlay must define the gate-status-error alias");
 
+/*
+ * Authentication and replay resistance are configuration, and a missing
+ * configuration is a build error for the same reason a missing alias is: no
+ * retry produces a key or a storage partition that the build never bound
+ * (D014). Catching it here keeps an unprovisioned image from being flashed and
+ * then failing silently in the field.
+ *
+ * Only builds that can actually reach the radio are held to this. A build with
+ * no lora0 alias idles on purpose and needs neither a key nor counters (D012).
+ * Only the key length is checkable at build time; gate_auth_key_from_hex()
+ * still validates the characters at startup.
+ */
+#if GATE_RADIO_PRESENT
+BUILD_ASSERT(sizeof(CONFIG_GATE_AUTH_KEY_HEX) == GATE_AUTH_KEY_HEX_SIZE + 1u,
+	     "CONFIG_GATE_AUTH_KEY_HEX must be exactly 64 hex characters; provision it through "
+	     "a local unversioned EXTRA_CONF_FILE, never in the repository");
+BUILD_ASSERT(IS_ENABLED(CONFIG_GATE_COUNTER_STORE_NVS),
+	     "authenticated builds require CONFIG_GATE_COUNTER_STORE_NVS: without persisted "
+	     "counters the transmitter would reuse sequence numbers after a reset (D018)");
+#endif
+
 static const struct gpio_dt_spec button = GPIO_DT_SPEC_GET(DT_ALIAS(gate_button), gpios);
 static const struct gpio_dt_spec status_ok = GPIO_DT_SPEC_GET(DT_ALIAS(gate_status_ok), gpios);
 static const struct gpio_dt_spec status_error =
     GPIO_DT_SPEC_GET(DT_ALIAS(gate_status_error), gpios);
+
+static uint8_t auth_key[GATE_AUTH_KEY_SIZE];
+
+#if IS_ENABLED(CONFIG_GATE_COUNTER_STORE_NVS)
+static struct gate_counter_store sequence_store;
+#endif
 
 /*
  * Read the button as a logical level. Zephyr 3.7's ESP32 GPIO path returns the
@@ -167,6 +198,121 @@ static void indicate_error(void)
 	set_status_outputs(false, false);
 }
 
+static int auth_init(void)
+{
+	enum gate_auth_status status;
+
+	status = gate_auth_key_from_hex(CONFIG_GATE_AUTH_KEY_HEX, auth_key, sizeof(auth_key));
+	if (status != GATE_AUTH_OK) {
+		LOG_ERR("TX authentication key invalid: %s", gate_auth_status_name(status));
+		LOG_ERR("TX requires CONFIG_GATE_AUTH_KEY_HEX with 64 hex characters");
+		return -EINVAL;
+	}
+
+	LOG_INF("TX authentication enabled tag=%u bytes", GATE_PROTOCOL_AUTH_TAG_SIZE);
+
+	return 0;
+}
+
+static int sequence_store_init(uint32_t *sequence)
+{
+#if IS_ENABLED(CONFIG_GATE_COUNTER_STORE_NVS)
+	bool found;
+	int ret;
+
+	ret = gate_counter_store_init(&sequence_store);
+	if (ret < 0) {
+		LOG_ERR("TX sequence store init failed: %d", ret);
+		if (ret == -EDEADLK) {
+			LOG_ERR("TX sequence store is not a valid NVS area; erase storage during "
+				"provisioning");
+		}
+		return ret;
+	}
+
+	ret = gate_counter_store_read(&sequence_store, GATE_COUNTER_STORE_TX_SEQUENCE_ID, sequence,
+				      &found);
+	if (ret < 0) {
+		LOG_ERR("TX sequence store read failed: %d", ret);
+		return ret;
+	}
+
+	if (!found || *sequence == GATE_SEQUENCE_NONE) {
+		*sequence = GATE_SEQUENCE_NONE;
+		LOG_INF("TX sequence store is empty");
+		return 0;
+	}
+
+	LOG_INF("TX sequence store loaded last=%u", *sequence);
+
+	return 0;
+#else
+	ARG_UNUSED(sequence);
+	LOG_ERR("TX replay-resistant sequence storage is not enabled");
+	return -ENOTSUP;
+#endif
+}
+
+static int reserve_next_sequence(uint32_t *sequence)
+{
+#if IS_ENABLED(CONFIG_GATE_COUNTER_STORE_NVS)
+	uint32_t next;
+	int ret;
+
+	if (sequence == NULL) {
+		return -EINVAL;
+	}
+
+	if (*sequence == UINT32_MAX) {
+		LOG_ERR("TX sequence exhausted; reprovision before sending another command");
+		return -EOVERFLOW;
+	}
+
+	next = *sequence + 1u;
+	if (next == GATE_SEQUENCE_NONE) {
+		return -EOVERFLOW;
+	}
+
+	ret = gate_counter_store_write(&sequence_store, GATE_COUNTER_STORE_TX_SEQUENCE_ID, next);
+	if (ret < 0) {
+		LOG_ERR("TX sequence store write failed seq=%u ret=%d", next, ret);
+		return ret;
+	}
+
+	*sequence = next;
+
+	return 0;
+#else
+	ARG_UNUSED(sequence);
+	return -ENOTSUP;
+#endif
+}
+
+static int prepare_command(struct gate_packet *packet, uint32_t *sequence)
+{
+	enum gate_auth_status auth_status;
+	int ret;
+
+	ret = reserve_next_sequence(sequence);
+	if (ret < 0) {
+		return ret;
+	}
+
+	gate_protocol_init_command(packet, CONFIG_GATE_TX_DEVICE_ID, *sequence,
+				   GATE_COMMAND_TRIGGER);
+
+	auth_status = gate_auth_sign(packet, auth_key, sizeof(auth_key));
+	if (auth_status != GATE_AUTH_OK) {
+		LOG_ERR("TX auth sign failed seq=%u status=%s", packet->sequence,
+			gate_auth_status_name(auth_status));
+		return -EINVAL;
+	}
+
+	LOG_INF("TX prepared authenticated command seq=%u", packet->sequence);
+
+	return 0;
+}
+
 static int send_command(const struct gate_packet *packet)
 {
 	uint8_t buffer[GATE_PROTOCOL_PACKET_SIZE];
@@ -223,6 +369,7 @@ static int wait_for_ack(const struct gate_packet *command)
 		struct gate_radio_rx_result rx;
 		struct gate_packet packet;
 		enum gate_protocol_status status;
+		enum gate_auth_status auth_status;
 		int64_t remaining = deadline - k_uptime_get();
 
 		if (remaining <= 0) {
@@ -252,6 +399,15 @@ static int wait_for_ack(const struct gate_packet *command)
 			LOG_WRN("TX ignored invalid packet len=%u rssi=%d snr=%d status=%s",
 				(unsigned int)rx.length, rx.rssi, rx.snr,
 				gate_protocol_status_name(status));
+			continue;
+		}
+
+		auth_status = gate_auth_verify(&packet, auth_key, sizeof(auth_key));
+		if (auth_status != GATE_AUTH_OK) {
+			LOG_WRN("TX ignored unauthenticated packet type=%s seq=%u device=%u "
+				"status=%s",
+				gate_message_type_name(packet.type), packet.sequence,
+				packet.device_id, gate_auth_status_name(auth_status));
 			continue;
 		}
 
@@ -367,20 +523,31 @@ int main(void)
 		return 0;
 	}
 
+	ret = auth_init();
+	if (ret < 0) {
+		return 0;
+	}
+
+	ret = sequence_store_init(&sequence);
+	if (ret < 0) {
+		return 0;
+	}
+
 	radio_wait_ready();
 
 	for (;;) {
 		struct gate_packet packet;
+		int prepare_ret;
 
 		LOG_INF("TX ready, waiting for button");
 		wait_for_button_state(true);
 		LOG_INF("TX button pressed");
 
-		sequence = gate_protocol_next_sequence(sequence);
-		gate_protocol_init_command(&packet, CONFIG_GATE_TX_DEVICE_ID, sequence,
-					   GATE_COMMAND_TRIGGER);
-
-		ret = transmit_command_with_retries(&packet);
+		prepare_ret = prepare_command(&packet, &sequence);
+		ret = prepare_ret;
+		if (prepare_ret == 0) {
+			ret = transmit_command_with_retries(&packet);
+		}
 
 		if (ret == 0) {
 			indicate_success();
@@ -389,14 +556,18 @@ int main(void)
 		}
 
 		/*
-		 * -EAGAIN means the receiver never answered, which says nothing
-		 * about the local radio. -EINVAL comes from local packet
-		 * construction and retrying the radio cannot fix it. Other
-		 * command errors are local radio failures and recover now, so a
-		 * powered-down TX module while idle does not require multiple
-		 * button presses to heal.
+		 * Only a command that reached the radio can have failed because
+		 * of it. Reserving a sequence fails against NVS, not the SX1276,
+		 * so probing the radio there would neither fix anything nor
+		 * describe what went wrong (D016).
+		 *
+		 * Past that point: -EAGAIN means the receiver never answered,
+		 * which says nothing about the local radio, and -EINVAL comes
+		 * from local packet construction. Everything else is a local
+		 * radio failure and recovers now, so a TX module powered down
+		 * while idle does not require multiple button presses to heal.
 		 */
-		if (command_error_is_local_radio_failure(ret)) {
+		if (prepare_ret == 0 && command_error_is_local_radio_failure(ret)) {
 			recover_radio_after_command_error(ret);
 		}
 

@@ -79,3 +79,45 @@ config GATE_RADIO_RECOVERY_INTERVAL_MS
 	  retries done at boot when the radio does not answer.
 
 endmenu
+
+menu "Gate Link authentication"
+
+config GATE_AUTH
+	bool
+	default y
+	select MBEDTLS
+	select MBEDTLS_MD
+	select MBEDTLS_SHA256
+
+config GATE_AUTH_KEY_HEX
+	string "Shared authentication key as 64 hex characters"
+	default ""
+	depends on GATE_AUTH
+	help
+	  Shared 256-bit key used to authenticate COMMAND and ACK packets with
+	  HMAC-SHA256. Leave the repository default empty: real keys must be
+	  provisioned through local, unversioned build configuration.
+
+	  The key is never transmitted over LoRa. Do not reuse the same key for
+	  unrelated projects or installed devices.
+
+config GATE_COUNTER_STORE_NVS
+	bool "Persist replay counters in Zephyr NVS"
+	depends on NVS && FLASH_MAP && FLASH_PAGE_LAYOUT
+	help
+	  Store the transmitter's last issued sequence and the receiver's last
+	  accepted sequence in the board's storage partition. This is required
+	  for replay resistance across device resets.
+
+config GATE_COUNTER_NVS_SECTOR_COUNT
+	int "Number of NVS sectors used for Gate Link counters"
+	default 3
+	range 2 8
+	depends on GATE_COUNTER_STORE_NVS
+	help
+	  Number of flash sectors dedicated to the small monotonic counters.
+	  The ESP32 DevKitC board definition exposes a 24 KiB storage
+	  partition, so three 4 KiB sectors leave room for NVS metadata and
+	  rotation.
+
+endmenu

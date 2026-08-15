@@ -22,3 +22,9 @@ docs/history/
 *.plan.md
 *.history.md
 *.notes.md
+
+# Local secrets and per-bench configuration
+local*.conf
+*.local.conf
+*.secret.conf
+secrets/

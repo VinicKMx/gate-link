@@ -15,6 +15,17 @@
 #define GATE_OFFSET_COMMAND 10u
 #define GATE_OFFSET_AUTH_TAG 11u
 
+/*
+ * The authenticated region must end exactly where the tag begins. Adding a
+ * field without moving one of the two would leave those bytes outside the MAC
+ * on both the signing and the verifying side, so no test could catch it.
+ *
+ * Spelled without BUILD_ASSERT to keep this module free of Zephyr headers: it
+ * is pure bytes and validation, and stays buildable and fuzzable on its own.
+ */
+typedef char gate_protocol_auth_region_ends_at_tag
+    [(GATE_PROTOCOL_AUTH_DATA_SIZE == GATE_OFFSET_AUTH_TAG) ? 1 : -1];
+
 static void put_le32(uint8_t *buffer, uint32_t value)
 {
 	buffer[0] = (uint8_t)(value & 0xffu);
@@ -221,15 +232,4 @@ bool gate_protocol_ack_matches(const struct gate_packet *packet, uint32_t expect
 
 	return packet->type == GATE_MESSAGE_TYPE_ACK && packet->device_id == expected_device_id &&
 	       packet->sequence == expected_sequence && packet->command == expected_command;
-}
-
-uint32_t gate_protocol_next_sequence(uint32_t sequence)
-{
-	uint32_t next = sequence + 1u;
-
-	if (next == GATE_SEQUENCE_NONE) {
-		next = 1u;
-	}
-
-	return next;
 }

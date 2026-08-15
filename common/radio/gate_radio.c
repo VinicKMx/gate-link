@@ -32,7 +32,7 @@ LOG_MODULE_REGISTER(gate_radio, CONFIG_GATE_RADIO_LOG_LEVEL);
 #error "CONFIG_GATE_RADIO_BANDWIDTH_KHZ must be 125, 250, or 500"
 #endif
 
-#if DT_NODE_HAS_STATUS(GATE_LORA_NODE, okay) && IS_ENABLED(CONFIG_LORA)
+#if GATE_RADIO_PRESENT
 
 static const struct device *const lora_dev = DEVICE_DT_GET(GATE_LORA_NODE);
 static const struct spi_dt_spec lora_spi =

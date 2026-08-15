@@ -13,11 +13,22 @@ APP_ROOT="$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)"
 BOARD="${BOARD:-native_sim/native/64}"
 BUILD_ROOT="${BUILD_ROOT:-build}"
 
+build_app() {
+	app="$1"
+	if [ -n "${EXTRA_CONF_FILE:-}" ]; then
+		west build -p always -b "$BOARD" -s "$APP_ROOT/apps/$app" \
+			-d "$BUILD_ROOT/$app" -- -DEXTRA_CONF_FILE="$EXTRA_CONF_FILE"
+	else
+		west build -p always -b "$BOARD" -s "$APP_ROOT/apps/$app" \
+			-d "$BUILD_ROOT/$app"
+	fi
+}
+
 if ! west topdir >/dev/null 2>&1; then
 	echo "error: run this script from a Zephyr west workspace" >&2
 	echo "hint: configure the workspace manifest.path to this repository" >&2
 	exit 1
 fi
 
-west build -p always -b "$BOARD" -s "$APP_ROOT/apps/transmitter" -d "$BUILD_ROOT/transmitter"
-west build -p always -b "$BOARD" -s "$APP_ROOT/apps/receiver" -d "$BUILD_ROOT/receiver"
+build_app transmitter
+build_app receiver

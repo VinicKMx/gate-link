@@ -11,7 +11,18 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <zephyr/devicetree.h>
 #include <zephyr/kernel.h>
+
+/**
+ * True at build time when this build has a LoRa radio wired up.
+ *
+ * The compile-time twin of gate_radio_is_present(). Applications use it to
+ * require provisioning (authentication key, counter storage) only in builds
+ * that can actually operate the command path, so a host smoke build with no
+ * lora0 alias still compiles and idles as designed (D012).
+ */
+#define GATE_RADIO_PRESENT (DT_NODE_HAS_STATUS(DT_ALIAS(lora0), okay) && IS_ENABLED(CONFIG_LORA))
 
 struct gate_radio_rx_result {
 	size_t length;

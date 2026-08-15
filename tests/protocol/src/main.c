@@ -8,10 +8,18 @@
 
 #include <zephyr/ztest.h>
 
+#include <auth/gate_auth.h>
 #include <protocol/gate_protocol.h>
 
 #define TEST_DEVICE_ID 0xa1b2c3d4u
 #define TEST_SEQUENCE 0x00010203u
+
+static const char TEST_KEY_HEX[] =
+    "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+static const uint8_t TEST_KEY[GATE_AUTH_KEY_SIZE] = {
+    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+    0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
+};
 
 static void fill_valid_frame(uint8_t *frame)
 {
@@ -87,8 +95,8 @@ ZTEST(gate_protocol, test_ack_roundtrip)
 	zassert_equal(received.sequence, TEST_SEQUENCE);
 }
 
-/* The reserved auth_tag must survive a roundtrip untouched, so phase 8 can
- * start carrying a real tag without changing the packet shape.
+/* The auth_tag must survive a plain protocol roundtrip untouched. Signing and
+ * verification happen in common/auth, not in encode/decode.
  */
 ZTEST(gate_protocol, test_auth_tag_roundtrips)
 {
@@ -104,6 +112,93 @@ ZTEST(gate_protocol, test_auth_tag_roundtrips)
 	zassert_equal(gate_protocol_decode(frame, sizeof(frame), &received), GATE_PROTOCOL_OK);
 
 	zassert_mem_equal(received.auth_tag, tag, sizeof(tag));
+}
+
+ZTEST(gate_protocol, test_auth_key_from_hex)
+{
+	uint8_t key[GATE_AUTH_KEY_SIZE];
+
+	zassert_equal(gate_auth_key_from_hex(TEST_KEY_HEX, key, sizeof(key)), GATE_AUTH_OK);
+	zassert_mem_equal(key, TEST_KEY, sizeof(key));
+
+	zassert_equal(gate_auth_key_from_hex("", key, sizeof(key)), GATE_AUTH_ERR_KEY_LENGTH);
+	zassert_equal(gate_auth_key_from_hex(TEST_KEY_HEX, key, sizeof(key) - 1u),
+		      GATE_AUTH_ERR_KEY_LENGTH);
+
+	zassert_equal(gate_auth_key_from_hex(
+			  "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1x", key,
+			  sizeof(key)),
+		      GATE_AUTH_ERR_KEY_HEX);
+}
+
+ZTEST(gate_protocol, test_auth_sign_matches_known_hmac_sha256_vector)
+{
+	static const uint8_t expected_tag[GATE_PROTOCOL_AUTH_TAG_SIZE] = {
+	    0xc1, 0xec, 0xc3, 0xd4, 0x69, 0xdd, 0x33, 0x38,
+	};
+	struct gate_packet packet;
+
+	gate_protocol_init_command(&packet, TEST_DEVICE_ID, TEST_SEQUENCE, GATE_COMMAND_TRIGGER);
+
+	zassert_equal(gate_auth_sign(&packet, TEST_KEY, sizeof(TEST_KEY)), GATE_AUTH_OK);
+	zassert_mem_equal(packet.auth_tag, expected_tag, sizeof(expected_tag));
+}
+
+ZTEST(gate_protocol, test_auth_ack_uses_message_type_in_tag)
+{
+	static const uint8_t expected_tag[GATE_PROTOCOL_AUTH_TAG_SIZE] = {
+	    0xe3, 0xb0, 0x01, 0x7b, 0xfe, 0x0d, 0x27, 0x2f,
+	};
+	struct gate_packet packet;
+
+	gate_protocol_init_ack(&packet, TEST_DEVICE_ID, TEST_SEQUENCE, GATE_COMMAND_TRIGGER);
+
+	zassert_equal(gate_auth_sign(&packet, TEST_KEY, sizeof(TEST_KEY)), GATE_AUTH_OK);
+	zassert_mem_equal(packet.auth_tag, expected_tag, sizeof(expected_tag));
+}
+
+ZTEST(gate_protocol, test_auth_verify_accepts_signed_packet)
+{
+	struct gate_packet packet;
+
+	gate_protocol_init_command(&packet, TEST_DEVICE_ID, TEST_SEQUENCE, GATE_COMMAND_TRIGGER);
+	zassert_equal(gate_auth_sign(&packet, TEST_KEY, sizeof(TEST_KEY)), GATE_AUTH_OK);
+
+	zassert_equal(gate_auth_verify(&packet, TEST_KEY, sizeof(TEST_KEY)), GATE_AUTH_OK);
+}
+
+ZTEST(gate_protocol, test_auth_verify_rejects_tampered_fields_and_tag)
+{
+	uint8_t wrong_key[GATE_AUTH_KEY_SIZE] = {0};
+	struct gate_packet packet;
+
+	gate_protocol_init_command(&packet, TEST_DEVICE_ID, TEST_SEQUENCE, GATE_COMMAND_TRIGGER);
+	zassert_equal(gate_auth_sign(&packet, TEST_KEY, sizeof(TEST_KEY)), GATE_AUTH_OK);
+
+	packet.sequence++;
+	zassert_equal(gate_auth_verify(&packet, TEST_KEY, sizeof(TEST_KEY)), GATE_AUTH_ERR_TAG);
+
+	packet.sequence--;
+	packet.auth_tag[0] ^= 0x01u;
+	zassert_equal(gate_auth_verify(&packet, TEST_KEY, sizeof(TEST_KEY)), GATE_AUTH_ERR_TAG);
+
+	zassert_equal(gate_auth_verify(&packet, wrong_key, sizeof(wrong_key)), GATE_AUTH_ERR_TAG);
+}
+
+ZTEST(gate_protocol, test_auth_rejects_invalid_arguments)
+{
+	struct gate_packet packet;
+
+	gate_protocol_init_command(&packet, TEST_DEVICE_ID, TEST_SEQUENCE, GATE_COMMAND_TRIGGER);
+
+	zassert_equal(gate_auth_key_from_hex(NULL, packet.auth_tag, sizeof(packet.auth_tag)),
+		      GATE_AUTH_ERR_ARG);
+	zassert_equal(gate_auth_sign(NULL, TEST_KEY, sizeof(TEST_KEY)), GATE_AUTH_ERR_ARG);
+	zassert_equal(gate_auth_sign(&packet, NULL, sizeof(TEST_KEY)), GATE_AUTH_ERR_ARG);
+	zassert_equal(gate_auth_verify(NULL, TEST_KEY, sizeof(TEST_KEY)), GATE_AUTH_ERR_ARG);
+	zassert_equal(gate_auth_verify(&packet, TEST_KEY, sizeof(TEST_KEY) - 1u),
+		      GATE_AUTH_ERR_ARG);
+	zassert_str_equal(gate_auth_status_name(GATE_AUTH_ERR_TAG), "ERR_TAG");
 }
 
 ZTEST(gate_protocol, test_decode_rejects_bad_version)
@@ -272,11 +367,16 @@ ZTEST(gate_protocol, test_command_packet_is_not_an_ack)
 		      "a COMMAND echo must never be accepted as an ACK");
 }
 
-ZTEST(gate_protocol, test_next_sequence_skips_reserved_value)
+/*
+ * The authenticated region must cover every field the receiver acts on, and
+ * nothing else. This pins the constant the signer and the verifier both use.
+ */
+ZTEST(gate_protocol, test_authenticated_region_covers_all_fields_before_the_tag)
 {
-	zassert_equal(gate_protocol_next_sequence(1u), 2u);
-	zassert_equal(gate_protocol_next_sequence(UINT32_MAX), 1u, "wraparound must skip 0");
-	zassert_not_equal(gate_protocol_next_sequence(UINT32_MAX), GATE_SEQUENCE_NONE);
+	zassert_equal(GATE_PROTOCOL_AUTH_DATA_SIZE,
+		      GATE_PROTOCOL_PACKET_SIZE - GATE_PROTOCOL_AUTH_TAG_SIZE);
+	zassert_equal(GATE_PROTOCOL_AUTH_DATA_SIZE, 11u,
+		      "version, type, device_id, sequence, and command are 11 bytes");
 }
 
 ZTEST(gate_protocol, test_names_cover_unknown_values)
