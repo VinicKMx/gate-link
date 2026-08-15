@@ -193,7 +193,7 @@ static void note_radio_failure(uint32_t *failures)
 
 	radio_wait_ready();
 
-	LOG_INF("RX radio recovered");
+	LOG_INF("RX radio recovered after runtime failure");
 }
 
 /*
@@ -214,7 +214,7 @@ static void refresh_radio_after_timeout(void)
 
 	LOG_WRN("RX radio refresh failed after timeout: %d", ret);
 	radio_wait_ready();
-	LOG_INF("RX radio recovered");
+	LOG_INF("RX radio recovered after idle timeout");
 }
 
 int main(void)

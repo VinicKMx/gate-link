@@ -288,25 +288,6 @@ static void radio_wait_ready(void)
 	}
 }
 
-/*
- * Count one radio error and recover once the threshold is reached. Only genuine
- * radio errors may reach this function; an unanswered command is a link
- * failure, not a local one.
- */
-static void note_radio_failure(uint32_t *failures)
-{
-	if (++(*failures) < (uint32_t)CONFIG_GATE_RADIO_RECOVERY_THRESHOLD) {
-		return;
-	}
-
-	LOG_WRN("TX recovering radio after %u consecutive failures", *failures);
-	*failures = 0u;
-
-	radio_wait_ready();
-
-	LOG_INF("TX radio recovered");
-}
-
 static int transmit_command_with_retries(const struct gate_packet *packet)
 {
 	const uint32_t max_retries = CONFIG_GATE_TX_MAX_RETRIES;
@@ -326,7 +307,7 @@ static int transmit_command_with_retries(const struct gate_packet *packet)
 		/* send_command() already logged the specific failure. */
 		ret = send_command(packet);
 		if (ret < 0) {
-			return ret;
+			return ret == -EINVAL ? ret : -EIO;
 		}
 
 		ret = wait_for_ack(packet);
@@ -348,10 +329,22 @@ static int transmit_command_with_retries(const struct gate_packet *packet)
 	return -EAGAIN;
 }
 
+static bool command_error_is_local_radio_failure(int ret)
+{
+	/* At this boundary, -EAGAIN only means "sent but no ACK arrived". */
+	return ret != 0 && ret != -EAGAIN && ret != -EINVAL;
+}
+
+static void recover_radio_after_command_error(int ret)
+{
+	LOG_WRN("TX recovering radio after local command error: %d", ret);
+	radio_wait_ready();
+	LOG_INF("TX radio recovered after command error");
+}
+
 int main(void)
 {
 	uint32_t sequence = GATE_SEQUENCE_NONE;
-	uint32_t radio_failures = 0u;
 	int ret;
 
 	LOG_INF("TX boot");
@@ -389,20 +382,22 @@ int main(void)
 
 		ret = transmit_command_with_retries(&packet);
 
-		/*
-		 * -EAGAIN means the receiver never answered, which says nothing
-		 * about the local radio, so it must not trigger recovery.
-		 */
-		if (ret == 0 || ret == -EAGAIN) {
-			radio_failures = 0u;
-		} else {
-			note_radio_failure(&radio_failures);
-		}
-
 		if (ret == 0) {
 			indicate_success();
 		} else {
 			indicate_error();
+		}
+
+		/*
+		 * -EAGAIN means the receiver never answered, which says nothing
+		 * about the local radio. -EINVAL comes from local packet
+		 * construction and retrying the radio cannot fix it. Other
+		 * command errors are local radio failures and recover now, so a
+		 * powered-down TX module while idle does not require multiple
+		 * button presses to heal.
+		 */
+		if (command_error_is_local_radio_failure(ret)) {
+			recover_radio_after_command_error(ret);
 		}
 
 		LOG_INF("TX waiting for button release");
