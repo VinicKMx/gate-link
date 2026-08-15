@@ -196,6 +196,27 @@ static void note_radio_failure(uint32_t *failures)
 	LOG_INF("RX radio recovered");
 }
 
+/*
+ * Refresh the radio after each receive timeout.
+ *
+ * With the RFM95W powered off at runtime, lora_recv() can keep returning
+ * -EAGAIN rather than a hard bus error. A timeout is still normal when the link
+ * is idle, so the success path is intentionally quiet; the important behavior
+ * is to notice a missing chip and to re-apply RX mode after power returns.
+ */
+static void refresh_radio_after_timeout(void)
+{
+	int ret = gate_radio_refresh_rx();
+
+	if (ret == 0) {
+		return;
+	}
+
+	LOG_WRN("RX radio refresh failed after timeout: %d", ret);
+	radio_wait_ready();
+	LOG_INF("RX radio recovered");
+}
+
 int main(void)
 {
 	struct gate_sequence_tracker sequence_trackers[1];
@@ -251,6 +272,7 @@ int main(void)
 
 		if (ret == -EAGAIN) {
 			LOG_INF("RX waiting for packets");
+			refresh_radio_after_timeout();
 			continue;
 		}
 

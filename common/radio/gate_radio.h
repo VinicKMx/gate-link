@@ -38,6 +38,16 @@ bool gate_radio_is_present(void);
  */
 int gate_radio_init(void);
 
+/**
+ * Probe the radio and re-apply receive mode.
+ *
+ * This is intended for receiver idle timeouts. A powered-down SX1276 can look
+ * like a normal receive timeout to Zephyr's LoRa API; periodically refreshing
+ * RX mode lets the application detect a missing module and reprogram it after
+ * power returns.
+ */
+int gate_radio_refresh_rx(void);
+
 int gate_radio_configure_tx(void);
 int gate_radio_configure_rx(void);
 int gate_radio_send(uint8_t *data, size_t length);

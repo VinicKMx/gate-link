@@ -94,7 +94,7 @@ static int sx1276_read_version(uint8_t *version)
 
 bool gate_radio_is_present(void) { return true; }
 
-int gate_radio_init(void)
+static int probe_sx1276(bool log_success)
 {
 	uint8_t version;
 	int ret;
@@ -116,15 +116,24 @@ int gate_radio_init(void)
 		return -EIO;
 	}
 
-	LOG_INF("SX1276 detected: version=0x%02x", version);
+	if (log_success) {
+		LOG_INF("SX1276 detected: version=0x%02x", version);
+	}
 
 	return 0;
 }
 
-static int configure_lora(bool tx)
+int gate_radio_init(void) { return probe_sx1276(true); }
+
+static int configure_lora(bool tx, bool log_success)
 {
 	struct lora_modem_config config = make_lora_config(tx);
 	int ret;
+
+	ret = probe_sx1276(false);
+	if (ret < 0) {
+		return ret;
+	}
 
 	ret = lora_config(lora_dev, &config);
 	if (ret < 0) {
@@ -132,17 +141,26 @@ static int configure_lora(bool tx)
 		return ret;
 	}
 
-	LOG_INF("LoRa %s ready: freq=%u Hz bw=%u kHz sf=%u cr=4/%u preamble=%u tx_power=%d dBm",
-		tx ? "TX" : "RX", CONFIG_GATE_RADIO_FREQUENCY_HZ, CONFIG_GATE_RADIO_BANDWIDTH_KHZ,
-		CONFIG_GATE_RADIO_SPREADING_FACTOR, CONFIG_GATE_RADIO_CODING_RATE_DENOMINATOR,
-		CONFIG_GATE_RADIO_PREAMBLE_LEN, CONFIG_GATE_RADIO_TX_POWER_DBM);
+	if (log_success) {
+		LOG_INF("LoRa %s ready: freq=%u Hz bw=%u kHz sf=%u cr=4/%u preamble=%u "
+			"tx_power=%d dBm",
+			tx ? "TX" : "RX", CONFIG_GATE_RADIO_FREQUENCY_HZ,
+			CONFIG_GATE_RADIO_BANDWIDTH_KHZ, CONFIG_GATE_RADIO_SPREADING_FACTOR,
+			CONFIG_GATE_RADIO_CODING_RATE_DENOMINATOR,
+			CONFIG_GATE_RADIO_PREAMBLE_LEN, CONFIG_GATE_RADIO_TX_POWER_DBM);
+	}
 
 	return 0;
 }
 
-int gate_radio_configure_tx(void) { return configure_lora(true); }
+int gate_radio_refresh_rx(void)
+{
+	return configure_lora(false, false);
+}
 
-int gate_radio_configure_rx(void) { return configure_lora(false); }
+int gate_radio_configure_tx(void) { return configure_lora(true, true); }
+
+int gate_radio_configure_rx(void) { return configure_lora(false, true); }
 
 int gate_radio_send(uint8_t *data, size_t length)
 {
@@ -205,6 +223,8 @@ int gate_radio_init(void)
 	LOG_INF("LoRa radio is not configured in this build");
 	return -ENODEV;
 }
+
+int gate_radio_refresh_rx(void) { return -ENODEV; }
 
 int gate_radio_configure_tx(void) { return -ENODEV; }
 
