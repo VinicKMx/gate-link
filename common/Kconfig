@@ -53,4 +53,25 @@ config GATE_RADIO_PUBLIC_NETWORK
 	help
 	  Keep disabled for this private point-to-point link.
 
+config GATE_RADIO_RECOVERY_THRESHOLD
+	int "Consecutive radio failures before a recovery attempt"
+	default 3
+	range 1 20
+	help
+	  How many consecutive radio errors are tolerated before the application
+	  re-probes the module and reprograms the modem.
+
+	  Waiting for a peer that never answers is not a radio error and never
+	  counts toward this threshold: a command that exhausts its retries means
+	  the link failed, not that the local radio did.
+
+config GATE_RADIO_RECOVERY_INTERVAL_MS
+	int "Delay between radio recovery attempts in milliseconds"
+	default 5000
+	range 100 60000
+	help
+	  Paces recovery so a module that is unpowered, unwired, or wedged does
+	  not turn the application into a busy loop. The same interval paces the
+	  retries done at boot when the radio does not answer.
+
 endmenu

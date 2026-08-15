@@ -35,8 +35,8 @@ LOG_MODULE_REGISTER(gate_radio, CONFIG_GATE_RADIO_LOG_LEVEL);
 #if DT_NODE_HAS_STATUS(GATE_LORA_NODE, okay) && IS_ENABLED(CONFIG_LORA)
 
 static const struct device *const lora_dev = DEVICE_DT_GET(GATE_LORA_NODE);
-static const struct spi_dt_spec lora_spi = SPI_DT_SPEC_GET(
-	GATE_LORA_NODE, SPI_OP_MODE_MASTER | SPI_TRANSFER_MSB | SPI_WORD_SET(8), 0);
+static const struct spi_dt_spec lora_spi =
+	SPI_DT_SPEC_GET(GATE_LORA_NODE, SPI_OP_MODE_MASTER | SPI_TRANSFER_MSB | SPI_WORD_SET(8), 0);
 
 static struct lora_modem_config make_lora_config(bool tx)
 {
@@ -92,6 +92,8 @@ static int sx1276_read_version(uint8_t *version)
 	return 0;
 }
 
+bool gate_radio_is_present(void) { return true; }
+
 int gate_radio_init(void)
 {
 	uint8_t version;
@@ -131,8 +133,7 @@ static int configure_lora(bool tx)
 	}
 
 	LOG_INF("LoRa %s ready: freq=%u Hz bw=%u kHz sf=%u cr=4/%u preamble=%u tx_power=%d dBm",
-		tx ? "TX" : "RX",
-		CONFIG_GATE_RADIO_FREQUENCY_HZ, CONFIG_GATE_RADIO_BANDWIDTH_KHZ,
+		tx ? "TX" : "RX", CONFIG_GATE_RADIO_FREQUENCY_HZ, CONFIG_GATE_RADIO_BANDWIDTH_KHZ,
 		CONFIG_GATE_RADIO_SPREADING_FACTOR, CONFIG_GATE_RADIO_CODING_RATE_DENOMINATOR,
 		CONFIG_GATE_RADIO_PREAMBLE_LEN, CONFIG_GATE_RADIO_TX_POWER_DBM);
 
@@ -196,6 +197,8 @@ int gate_radio_receive(uint8_t *data, size_t capacity, k_timeout_t timeout,
 }
 
 #else
+
+bool gate_radio_is_present(void) { return false; }
 
 int gate_radio_init(void)
 {

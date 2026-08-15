@@ -75,11 +75,12 @@ The transmitter reports success only when:
 ```text
 message_type == ACK
 sequence == current_command_sequence
-device_id is accepted
+device_id == current_command_device_id
+command == current_command
 packet validation succeeds
 ```
 
-ACKs for old, unknown, or unrelated sequences are ignored.
+ACKs for old, unknown, wrong-command, or unrelated sequences are ignored.
 
 In protocol version 1, the ACK echoes the transmitter `device_id`, `sequence`,
 and `command` from the command being acknowledged. This keeps ACK matching tied

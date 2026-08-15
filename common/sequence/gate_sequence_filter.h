@@ -39,9 +39,9 @@ void gate_sequence_tracker_init(struct gate_sequence_tracker *tracker, uint32_t 
  * equality-only: a sequence is duplicate only when it matches the last sequence
  * already accepted for that same device id.
  */
-enum gate_sequence_decision
-gate_sequence_filter_command(struct gate_sequence_tracker *trackers, size_t tracker_count,
-			     const struct gate_packet *command);
+enum gate_sequence_decision gate_sequence_filter_command(struct gate_sequence_tracker *trackers,
+							 size_t tracker_count,
+							 const struct gate_packet *command);
 
 #ifdef __cplusplus
 }

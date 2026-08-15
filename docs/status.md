@@ -1,10 +1,10 @@
 # Implementation Status
 
-Gate Link has completed Phase 6: structured LoRa packets with ACK, timeout,
-retry, and receiver duplicate suppression.
+Gate Link has completed Phase 6 and has started Phase 7 software robustness:
+structured LoRa packets, ACK, timeout, retry, receiver duplicate suppression,
+and stricter ACK matching are implemented.
 
-This file tracks the public technical state of the firmware. Local planning
-notes and working history stay outside version control.
+This file tracks the public technical state of the firmware.
 
 ## Bench Hardware
 
@@ -44,7 +44,7 @@ Phase 3   Structured protocol               done
 Phase 4   ACK                               done
 Phase 5   Timeout and retry                 done
 Phase 6   Duplicate suppression             done
-Phase 7   Robustness                        pending
+Phase 7   Robustness                        in progress
 Phase 8   Security/authentication           pending
 Phase 9   Range test                        pending
 Phase 10  Real actuator preparation         pending
@@ -68,6 +68,12 @@ modules.
 - TX stops after a configured retry limit and reports final failure;
 - RX suppresses duplicate command execution for the accepted transmitter id;
 - RX still sends ACK when a valid duplicate command is received;
+- TX ignores ACK packets that do not match the current device id, sequence, and
+  command;
+- host tests cover TX sequence wraparound, TX reboot-style sequence restart,
+  RX duplicate state, and current RX reset behavior;
+- neither application parks itself permanently when the radio fails: both retry
+  at boot and recover after repeated runtime errors (D012);
 - bench RSSI/SNR is visible in serial logs.
 
 ## Current Firmware Behavior
@@ -92,10 +98,26 @@ than truncated, so an oversized frame can never be shortened into something
 that passes packet validation.
 
 The transmitter switches to RX after each send and reports success only when
-the decoded ACK matches the sequence currently in progress. Non-matching
-packets are ignored.
+the decoded ACK matches the device id, sequence, and command currently in
+progress. Non-matching packets are ignored.
+
+Both applications treat a missing or failing radio as recoverable. At boot they
+retry the probe every `CONFIG_GATE_RADIO_RECOVERY_INTERVAL_MS` until the module
+answers. At runtime, `CONFIG_GATE_RADIO_RECOVERY_THRESHOLD` consecutive radio
+errors trigger a re-probe followed by a fresh modem configuration; the receiver
+returns to RX mode as part of that. An unanswered command is a link failure, not
+a radio failure, and never triggers recovery. A build with no radio configured
+at all idles on purpose (D012).
 
 ## Next Criteria
+
+The remaining Phase 7 work depends on more hardware behavior:
+
+- physical button debounce;
+- button-held handling;
+- actuator pulse behavior after the LED is wired;
+- watchdog decision;
+- bench confirmation of radio recovery by removing module power while running.
 
 Phase 1 GPIO work is complete when the bench button and LEDs are wired, the
 transmitter turns one physical press into one logical command, and the receiver

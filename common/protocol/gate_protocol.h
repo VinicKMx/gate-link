@@ -144,7 +144,7 @@ enum gate_protocol_status gate_protocol_decode(const uint8_t *buffer, size_t len
  * false.
  */
 bool gate_protocol_ack_matches(const struct gate_packet *packet, uint32_t expected_device_id,
-			       uint32_t expected_sequence);
+			       uint32_t expected_sequence, uint8_t expected_command);
 
 /**
  * Return the sequence number following @p sequence, skipping the reserved

@@ -46,9 +46,8 @@ static int send_command(const struct gate_packet *packet)
 		return ret;
 	}
 
-	LOG_INF("TX sending %s seq=%u device=%u bytes=%u",
-		gate_command_name(packet->command), packet->sequence, packet->device_id,
-		(unsigned int)written);
+	LOG_INF("TX sending %s seq=%u device=%u bytes=%u", gate_command_name(packet->command),
+		packet->sequence, packet->device_id, (unsigned int)written);
 
 	ret = gate_radio_send(buffer, written);
 	if (ret < 0) {
@@ -61,7 +60,7 @@ static int send_command(const struct gate_packet *packet)
 	return 0;
 }
 
-static int wait_for_ack(uint32_t sequence)
+static int wait_for_ack(const struct gate_packet *command)
 {
 	int64_t deadline = k_uptime_get() + CONFIG_GATE_TX_ACK_TIMEOUT_MS;
 	int ret;
@@ -72,8 +71,8 @@ static int wait_for_ack(uint32_t sequence)
 		return ret;
 	}
 
-	LOG_INF("TX waiting for ACK seq=%u timeout=%u ms", sequence,
-		CONFIG_GATE_TX_ACK_TIMEOUT_MS);
+	LOG_INF("TX waiting for ACK seq=%u command=%s timeout=%u ms", command->sequence,
+		gate_command_name(command->command), CONFIG_GATE_TX_ACK_TIMEOUT_MS);
 
 	for (;;) {
 		/* One byte above the packet size, so an oversized frame is
@@ -86,23 +85,24 @@ static int wait_for_ack(uint32_t sequence)
 		int64_t remaining = deadline - k_uptime_get();
 
 		if (remaining <= 0) {
-			LOG_WRN("TX ACK timeout seq=%u", sequence);
+			LOG_WRN("TX ACK timeout seq=%u", command->sequence);
 			return -EAGAIN;
 		}
 
 		ret = gate_radio_receive(buffer, sizeof(buffer), K_MSEC(remaining), &rx);
 		if (ret == -EAGAIN) {
-			LOG_WRN("TX ACK timeout seq=%u", sequence);
+			LOG_WRN("TX ACK timeout seq=%u", command->sequence);
 			return ret;
 		}
 
 		if (ret == -EMSGSIZE) {
-			LOG_WRN("TX ignored oversized frame while waiting seq=%u", sequence);
+			LOG_WRN("TX ignored oversized frame while waiting seq=%u",
+				command->sequence);
 			continue;
 		}
 
 		if (ret < 0) {
-			LOG_ERR("TX ACK receive failed seq=%u ret=%d", sequence, ret);
+			LOG_ERR("TX ACK receive failed seq=%u ret=%d", command->sequence, ret);
 			return ret;
 		}
 
@@ -114,17 +114,56 @@ static int wait_for_ack(uint32_t sequence)
 			continue;
 		}
 
-		if (!gate_protocol_ack_matches(&packet, CONFIG_GATE_TX_DEVICE_ID, sequence)) {
-			LOG_WRN("TX ignored packet type=%s seq=%u device=%u while waiting seq=%u",
-				gate_message_type_name(packet.type), packet.sequence,
-				packet.device_id, sequence);
+		if (!gate_protocol_ack_matches(&packet, command->device_id, command->sequence,
+					       command->command)) {
+			LOG_WRN("TX ignored packet type=%s command=%s seq=%u device=%u while "
+				"waiting seq=%u command=%s",
+				gate_message_type_name(packet.type),
+				gate_command_name(packet.command), packet.sequence,
+				packet.device_id, command->sequence,
+				gate_command_name(command->command));
 			continue;
 		}
 
-		LOG_INF("TX ACK received seq=%u rssi=%d snr=%d", packet.sequence, rx.rssi,
-			rx.snr);
+		LOG_INF("TX ACK received seq=%u rssi=%d snr=%d", packet.sequence, rx.rssi, rx.snr);
 		return 0;
 	}
+}
+
+/*
+ * Block until the radio answers again.
+ *
+ * There is nothing useful a remote trigger can do without a radio, so this
+ * retries indefinitely instead of parking the board in a dead idle loop: a
+ * module that was unpowered, unwired, or wedged heals without a power cycle.
+ * The pacing keeps the console readable and stops it becoming a busy loop.
+ */
+static void radio_wait_ready(void)
+{
+	while (gate_radio_init() < 0) {
+		LOG_ERR("TX radio unavailable, retrying in %u ms",
+			CONFIG_GATE_RADIO_RECOVERY_INTERVAL_MS);
+		k_sleep(K_MSEC(CONFIG_GATE_RADIO_RECOVERY_INTERVAL_MS));
+	}
+}
+
+/*
+ * Count one radio error and recover once the threshold is reached. Only genuine
+ * radio errors may reach this function; an unanswered command is a link
+ * failure, not a local one.
+ */
+static void note_radio_failure(uint32_t *failures)
+{
+	if (++(*failures) < (uint32_t)CONFIG_GATE_RADIO_RECOVERY_THRESHOLD) {
+		return;
+	}
+
+	LOG_WRN("TX recovering radio after %u consecutive failures", *failures);
+	*failures = 0u;
+
+	radio_wait_ready();
+
+	LOG_INF("TX radio recovered");
 }
 
 static int transmit_command_with_retries(const struct gate_packet *packet)
@@ -149,10 +188,9 @@ static int transmit_command_with_retries(const struct gate_packet *packet)
 			return ret;
 		}
 
-		ret = wait_for_ack(packet->sequence);
+		ret = wait_for_ack(packet);
 		if (ret == 0) {
-			LOG_INF("TX command success seq=%u attempts=%u", packet->sequence,
-				attempt);
+			LOG_INF("TX command success seq=%u attempts=%u", packet->sequence, attempt);
 			return 0;
 		}
 
@@ -171,34 +209,42 @@ static int transmit_command_with_retries(const struct gate_packet *packet)
 
 int main(void)
 {
-	int ret;
 	uint32_t sequence = GATE_SEQUENCE_NONE;
+	uint32_t radio_failures = 0u;
 
 	LOG_INF("TX boot");
 	LOG_INF("TX protocol version=%u packet=%u bytes command=%s", gate_protocol_version(),
 		GATE_PROTOCOL_PACKET_SIZE, gate_command_name(GATE_COMMAND_TRIGGER));
 
-	ret = gate_radio_init();
-	if (ret < 0) {
-		LOG_WRN("TX radio unavailable: %d", ret);
-		goto idle;
+	if (!gate_radio_is_present()) {
+		LOG_WRN("TX has no LoRa radio in this build, idling");
+		k_sleep(K_FOREVER);
+		return 0;
 	}
+
+	radio_wait_ready();
 
 	for (;;) {
 		struct gate_packet packet;
+		int ret;
 
 		sequence = gate_protocol_next_sequence(sequence);
 		gate_protocol_init_command(&packet, CONFIG_GATE_TX_DEVICE_ID, sequence,
 					   GATE_COMMAND_TRIGGER);
 
-		(void)transmit_command_with_retries(&packet);
+		ret = transmit_command_with_retries(&packet);
+
+		/*
+		 * -EAGAIN means the receiver never answered, which says nothing
+		 * about the local radio, so it must not trigger recovery.
+		 */
+		if (ret == 0 || ret == -EAGAIN) {
+			radio_failures = 0u;
+		} else {
+			note_radio_failure(&radio_failures);
+		}
 
 		k_sleep(K_MSEC(CONFIG_GATE_TX_SEND_INTERVAL_MS));
-	}
-
-idle:
-	for (;;) {
-		k_sleep(K_SECONDS(30));
 	}
 
 	return 0;

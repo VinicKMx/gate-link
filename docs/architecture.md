@@ -87,10 +87,16 @@ It owns:
 - radio initialization;
 - send and receive operations;
 - radio error normalization;
-- radio configuration loading.
+- radio configuration loading;
+- reporting whether this build has a radio at all.
 
 It does not own application retries, command sequencing, ACK validation, or
 actuator behavior.
+
+Recovery policy sits outside this boundary too. The wrapper reports failures and
+offers a probe that is safe to re-run, while each application decides how many
+consecutive failures it tolerates and what it has to reconfigure afterwards
+(D012).
 
 ## Actuator Boundary
 

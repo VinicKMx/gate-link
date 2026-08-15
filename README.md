@@ -43,8 +43,9 @@ The system is designed around unreliable wireless communication:
 
 ## Current Status
 
-The bench firmware has completed Phase 6: structured LoRa packets with ACK,
-timeout, retry, and receiver duplicate suppression. Phase 1 actuator/button
+The bench firmware has completed Phase 6 and has started Phase 7 software
+robustness. Structured LoRa packets, ACK, timeout, retry, receiver duplicate
+suppression, and stricter ACK matching are implemented. Phase 1 actuator/button
 GPIO wiring is still pending physical bench wiring.
 
 Implemented now:
@@ -58,7 +59,12 @@ Implemented now:
 - TX retransmits the same command sequence after ACK timeout, up to a
   configured retry limit;
 - RX suppresses duplicate command execution by accepted transmitter identity and
-  still replies with ACK.
+  still replies with ACK;
+- host tests cover invalid packets, incorrect ACK matching, sequence wraparound,
+  TX reboot-style sequence restart, duplicate commands, and current RX reset
+  behavior;
+- both applications recover from radio failures instead of parking themselves
+  idle, at boot and at runtime.
 
 Not implemented yet:
 

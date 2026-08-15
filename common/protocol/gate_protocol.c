@@ -205,7 +205,7 @@ enum gate_protocol_status gate_protocol_decode(const uint8_t *buffer, size_t len
 }
 
 bool gate_protocol_ack_matches(const struct gate_packet *packet, uint32_t expected_device_id,
-			       uint32_t expected_sequence)
+			       uint32_t expected_sequence, uint8_t expected_command)
 {
 	if (packet == NULL) {
 		return false;
@@ -220,7 +220,7 @@ bool gate_protocol_ack_matches(const struct gate_packet *packet, uint32_t expect
 	}
 
 	return packet->type == GATE_MESSAGE_TYPE_ACK && packet->device_id == expected_device_id &&
-	       packet->sequence == expected_sequence;
+	       packet->sequence == expected_sequence && packet->command == expected_command;
 }
 
 uint32_t gate_protocol_next_sequence(uint32_t sequence)

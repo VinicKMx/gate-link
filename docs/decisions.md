@@ -127,3 +127,24 @@ Implementation constraint: ESP32 overlays using the board's
 When changing board, SPI bus, or LoRa module wiring, verify with a logic
 analyzer that `NSS` stays low for the complete register transaction and that
 the SX1276 version register reads `0x12`.
+
+## D012 - Never Park the Firmware on a Radio Failure
+
+Decision: neither application may end up in a state where a radio failure
+leaves it permanently idle. A radio that does not answer is retried forever, at
+a configured interval, and recovery re-probes the module and reprograms the
+modem before normal operation resumes.
+
+Reason: an installed gate trigger is unattended. A transient SPI glitch at
+power-on, a brownout, or a briefly disconnected module must not require a human
+to power cycle the board. "Dead and silent" is the worst failure mode for this
+product, and it is indistinguishable from a working unit until someone presses
+the button.
+
+Implementation constraint: a failure to reach the radio must never terminate a
+control loop. Only genuine radio errors count toward recovery. A command that
+exhausts its retries without an ACK is a link failure and must not trigger
+recovery, since the local radio is proven to work by the fact that it
+transmitted. Builds without a radio at all are a separate case: they are
+detected with `gate_radio_is_present()` and idle deliberately, because no amount
+of retrying creates hardware that is not there.

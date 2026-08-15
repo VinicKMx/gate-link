@@ -17,8 +17,8 @@ void gate_sequence_tracker_init(struct gate_sequence_tracker *tracker, uint32_t 
 	tracker->has_last_sequence = false;
 }
 
-static struct gate_sequence_tracker *
-find_tracker(struct gate_sequence_tracker *trackers, size_t tracker_count, uint32_t device_id)
+static struct gate_sequence_tracker *find_tracker(struct gate_sequence_tracker *trackers,
+						  size_t tracker_count, uint32_t device_id)
 {
 	for (size_t i = 0u; i < tracker_count; i++) {
 		if (trackers[i].device_id == device_id) {
@@ -29,9 +29,9 @@ find_tracker(struct gate_sequence_tracker *trackers, size_t tracker_count, uint3
 	return NULL;
 }
 
-enum gate_sequence_decision
-gate_sequence_filter_command(struct gate_sequence_tracker *trackers, size_t tracker_count,
-			     const struct gate_packet *command)
+enum gate_sequence_decision gate_sequence_filter_command(struct gate_sequence_tracker *trackers,
+							 size_t tracker_count,
+							 const struct gate_packet *command)
 {
 	struct gate_sequence_tracker *tracker;
 

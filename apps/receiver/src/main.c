@@ -68,9 +68,50 @@ static int send_ack(const struct gate_packet *command)
 	return send_ret;
 }
 
+/*
+ * Block until the radio answers and is listening again.
+ *
+ * There is nothing useful a receiver can do without a radio, so this retries
+ * indefinitely instead of parking the board in a dead idle loop: a module that
+ * was unpowered, unwired, or wedged heals without a power cycle. The receiver
+ * must always end up back in RX mode, so probing alone is not enough.
+ */
+static void radio_wait_ready(void)
+{
+	for (;;) {
+		if (gate_radio_init() == 0 && gate_radio_configure_rx() == 0) {
+			return;
+		}
+
+		LOG_ERR("RX radio unavailable, retrying in %u ms",
+			CONFIG_GATE_RADIO_RECOVERY_INTERVAL_MS);
+		k_sleep(K_MSEC(CONFIG_GATE_RADIO_RECOVERY_INTERVAL_MS));
+	}
+}
+
+/*
+ * Count one radio error and recover once the threshold is reached. Only genuine
+ * radio errors may reach this function; a receive timeout means the radio
+ * listened and heard nothing, which is normal.
+ */
+static void note_radio_failure(uint32_t *failures)
+{
+	if (++(*failures) < (uint32_t)CONFIG_GATE_RADIO_RECOVERY_THRESHOLD) {
+		return;
+	}
+
+	LOG_WRN("RX recovering radio after %u consecutive failures", *failures);
+	*failures = 0u;
+
+	radio_wait_ready();
+
+	LOG_INF("RX radio recovered");
+}
+
 int main(void)
 {
 	struct gate_sequence_tracker sequence_trackers[1];
+	uint32_t radio_failures = 0u;
 	int ret;
 
 	LOG_INF("RX boot");
@@ -78,17 +119,13 @@ int main(void)
 		GATE_PROTOCOL_PACKET_SIZE, gate_command_name(GATE_COMMAND_TRIGGER));
 	gate_sequence_tracker_init(&sequence_trackers[0], CONFIG_GATE_RX_ACCEPTED_DEVICE_ID);
 
-	ret = gate_radio_init();
-	if (ret < 0) {
-		LOG_WRN("RX radio unavailable: %d", ret);
-		goto idle;
+	if (!gate_radio_is_present()) {
+		LOG_WRN("RX has no LoRa radio in this build, idling");
+		k_sleep(K_FOREVER);
+		return 0;
 	}
 
-	ret = gate_radio_configure_rx();
-	if (ret < 0) {
-		LOG_ERR("RX radio config failed: %d", ret);
-		goto idle;
-	}
+	radio_wait_ready();
 
 	for (;;) {
 		/* One byte above the packet size, so an oversized frame is
@@ -101,6 +138,19 @@ int main(void)
 
 		ret = gate_radio_receive(buffer, sizeof(buffer),
 					 K_MSEC(CONFIG_GATE_RX_RECEIVE_TIMEOUT_MS), &rx);
+
+		/*
+		 * A timeout and an oversized frame both prove the radio is
+		 * working, so only unexpected errors count toward recovery.
+		 */
+		if (ret < 0 && ret != -EAGAIN && ret != -EMSGSIZE) {
+			LOG_ERR("RX receive failed: %d", ret);
+			note_radio_failure(&radio_failures);
+			continue;
+		}
+
+		radio_failures = 0u;
+
 		if (ret == -EAGAIN) {
 			LOG_INF("RX waiting for packets");
 			continue;
@@ -108,12 +158,6 @@ int main(void)
 
 		if (ret == -EMSGSIZE) {
 			LOG_WRN("RX dropped oversized frame");
-			continue;
-		}
-
-		if (ret < 0) {
-			LOG_ERR("RX receive failed: %d", ret);
-			k_sleep(K_SECONDS(1));
 			continue;
 		}
 
@@ -129,20 +173,21 @@ int main(void)
 			gate_message_type_name(packet.type), gate_command_name(packet.command),
 			packet.sequence, packet.device_id, rx.rssi, rx.snr);
 
-		switch (gate_sequence_filter_command(sequence_trackers, ARRAY_SIZE(sequence_trackers),
-						    &packet)) {
+		switch (gate_sequence_filter_command(sequence_trackers,
+						     ARRAY_SIZE(sequence_trackers), &packet)) {
 		case GATE_SEQUENCE_DECISION_EXECUTE:
 			LOG_INF("RX would trigger actuator seq=%u device=%u", packet.sequence,
 				packet.device_id);
 			break;
 		case GATE_SEQUENCE_DECISION_DUPLICATE:
-			LOG_WRN("RX duplicate seq=%u device=%u, actuator suppressed", packet.sequence,
-				packet.device_id);
+			LOG_WRN("RX duplicate seq=%u device=%u, actuator suppressed",
+				packet.sequence, packet.device_id);
 			break;
 		case GATE_SEQUENCE_DECISION_IGNORE:
-			LOG_WRN("RX ignored command from device=%u seq=%u, accepting only device=%u",
-				packet.device_id, packet.sequence,
-				(unsigned int)CONFIG_GATE_RX_ACCEPTED_DEVICE_ID);
+			LOG_WRN(
+			    "RX ignored command from device=%u seq=%u, accepting only device=%u",
+			    packet.device_id, packet.sequence,
+			    (unsigned int)CONFIG_GATE_RX_ACCEPTED_DEVICE_ID);
 			continue;
 		case GATE_SEQUENCE_DECISION_INVALID:
 		default:
@@ -152,15 +197,12 @@ int main(void)
 			continue;
 		}
 
+		/* A failed ACK is a local radio problem, not a link problem. */
 		ret = send_ack(&packet);
 		if (ret < 0) {
 			LOG_ERR("RX failed to acknowledge seq=%u ret=%d", packet.sequence, ret);
+			note_radio_failure(&radio_failures);
 		}
-	}
-
-idle:
-	for (;;) {
-		k_sleep(K_SECONDS(30));
 	}
 
 	return 0;

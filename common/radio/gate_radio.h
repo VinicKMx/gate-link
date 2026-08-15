@@ -7,6 +7,7 @@
 #ifndef GATE_LINK_COMMON_RADIO_GATE_RADIO_H_
 #define GATE_LINK_COMMON_RADIO_GATE_RADIO_H_
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -18,7 +19,25 @@ struct gate_radio_rx_result {
 	int8_t snr;
 };
 
+/**
+ * Report whether this build has a LoRa radio wired up at all.
+ *
+ * False on host builds that have no lora0 alias, where every other call in this
+ * header fails permanently. Callers use it to tell "no radio in this build",
+ * which retrying cannot fix, from "radio not answering", which it can.
+ */
+bool gate_radio_is_present(void);
+
+/**
+ * Probe the radio and verify the module answers.
+ *
+ * Safe to call again at any time: it re-reads the chip version rather than
+ * mutating state, so it doubles as the probe used to recover from repeated
+ * radio errors. A caller that recovers must re-apply its direction config,
+ * since a probe does not reprogram the modem.
+ */
 int gate_radio_init(void);
+
 int gate_radio_configure_tx(void);
 int gate_radio_configure_rx(void);
 int gate_radio_send(uint8_t *data, size_t length);

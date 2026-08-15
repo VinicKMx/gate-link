@@ -119,6 +119,25 @@ ZTEST(gate_sequence_filter, test_unknown_device_is_ignored_without_touching_stat
 		      GATE_SEQUENCE_DECISION_EXECUTE);
 }
 
+ZTEST(gate_sequence_filter, test_receiver_reset_forgets_last_sequence)
+{
+	struct gate_sequence_tracker tracker;
+	struct gate_packet packet = command(DEVICE_A, 12u);
+
+	gate_sequence_tracker_init(&tracker, DEVICE_A);
+
+	zassert_equal(gate_sequence_filter_command(&tracker, 1u, &packet),
+		      GATE_SEQUENCE_DECISION_EXECUTE);
+	zassert_equal(gate_sequence_filter_command(&tracker, 1u, &packet),
+		      GATE_SEQUENCE_DECISION_DUPLICATE);
+
+	gate_sequence_tracker_init(&tracker, DEVICE_A);
+
+	zassert_equal(gate_sequence_filter_command(&tracker, 1u, &packet),
+		      GATE_SEQUENCE_DECISION_EXECUTE,
+		      "deduplication state is intentionally RAM-only for now");
+}
+
 ZTEST(gate_sequence_filter, test_invalid_inputs_do_not_change_state)
 {
 	struct gate_sequence_tracker tracker;

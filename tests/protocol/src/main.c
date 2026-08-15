@@ -235,7 +235,8 @@ ZTEST(gate_protocol, test_null_arguments_are_rejected)
 	zassert_equal(gate_protocol_decode(frame, GATE_PROTOCOL_PACKET_SIZE, NULL),
 		      GATE_PROTOCOL_ERR_ARG);
 	zassert_equal(gate_protocol_validate(NULL), GATE_PROTOCOL_ERR_ARG);
-	zassert_false(gate_protocol_ack_matches(NULL, TEST_DEVICE_ID, TEST_SEQUENCE));
+	zassert_false(
+	    gate_protocol_ack_matches(NULL, TEST_DEVICE_ID, TEST_SEQUENCE, GATE_COMMAND_TRIGGER));
 }
 
 /* D007: success is reported only for an ACK matching the command in progress. */
@@ -244,14 +245,20 @@ ZTEST(gate_protocol, test_ack_matching)
 	struct gate_packet ack;
 
 	gate_protocol_init_ack(&ack, TEST_DEVICE_ID, TEST_SEQUENCE, GATE_COMMAND_TRIGGER);
-	zassert_true(gate_protocol_ack_matches(&ack, TEST_DEVICE_ID, TEST_SEQUENCE));
+	zassert_true(
+	    gate_protocol_ack_matches(&ack, TEST_DEVICE_ID, TEST_SEQUENCE, GATE_COMMAND_TRIGGER));
 
-	zassert_false(gate_protocol_ack_matches(&ack, TEST_DEVICE_ID, TEST_SEQUENCE + 1u),
+	zassert_false(gate_protocol_ack_matches(&ack, TEST_DEVICE_ID, TEST_SEQUENCE + 1u,
+						GATE_COMMAND_TRIGGER),
 		      "stale sequence must not match");
-	zassert_false(gate_protocol_ack_matches(&ack, TEST_DEVICE_ID + 1u, TEST_SEQUENCE),
+	zassert_false(gate_protocol_ack_matches(&ack, TEST_DEVICE_ID + 1u, TEST_SEQUENCE,
+						GATE_COMMAND_TRIGGER),
 		      "other device must not match");
-	zassert_false(gate_protocol_ack_matches(&ack, TEST_DEVICE_ID, GATE_SEQUENCE_NONE),
+	zassert_false(gate_protocol_ack_matches(&ack, TEST_DEVICE_ID, GATE_SEQUENCE_NONE,
+						GATE_COMMAND_TRIGGER),
 		      "no command in progress must not match");
+	zassert_false(gate_protocol_ack_matches(&ack, TEST_DEVICE_ID, TEST_SEQUENCE, 0xffu),
+		      "ACK for a different command must not match");
 }
 
 ZTEST(gate_protocol, test_command_packet_is_not_an_ack)
@@ -260,7 +267,8 @@ ZTEST(gate_protocol, test_command_packet_is_not_an_ack)
 
 	gate_protocol_init_command(&command, TEST_DEVICE_ID, TEST_SEQUENCE, GATE_COMMAND_TRIGGER);
 
-	zassert_false(gate_protocol_ack_matches(&command, TEST_DEVICE_ID, TEST_SEQUENCE),
+	zassert_false(gate_protocol_ack_matches(&command, TEST_DEVICE_ID, TEST_SEQUENCE,
+						GATE_COMMAND_TRIGGER),
 		      "a COMMAND echo must never be accepted as an ACK");
 }
 
