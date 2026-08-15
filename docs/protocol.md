@@ -125,6 +125,17 @@ device id. It does not use ordering comparisons such as "less than or equal",
 because the transmitter can reboot and restart at sequence 1, and the sequence
 field wraps from `UINT32_MAX` back to 1 while `0` remains reserved.
 
+Two limits follow from that design and are deliberate:
+
+- only the last accepted sequence is remembered, so this rule suppresses the
+  retransmission it is meant to suppress but is **not** replay protection. A
+  captured packet other than the most recent one is accepted again. Making a
+  captured packet unusable is the job of the Phase 8 authentication work, not of
+  duplicate detection;
+- the tracked sequence lives in RAM, so it does not survive a receiver reset. A
+  retransmission arriving after the receiver reboots is executed again. Receiver
+  restart behavior belongs to Phase 7.
+
 ## Radio Independence
 
 The protocol module owns bytes and validation. It does not own RSSI, SNR, LoRa
