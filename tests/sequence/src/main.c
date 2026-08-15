@@ -42,6 +42,9 @@ ZTEST(gate_sequence_filter, test_first_command_executes_and_same_sequence_is_dup
 
 	zassert_equal(gate_sequence_filter_command(&tracker, 1u, &packet),
 		      GATE_SEQUENCE_DECISION_EXECUTE);
+	zassert_false(tracker.has_last_sequence);
+
+	zassert_true(gate_sequence_accept_command(&tracker, 1u, &packet));
 	zassert_true(tracker.has_last_sequence);
 	zassert_equal(tracker.last_sequence, 42u);
 
@@ -61,9 +64,11 @@ ZTEST(gate_sequence_filter, test_rebooted_transmitter_sequence_is_not_treated_as
 
 	zassert_equal(gate_sequence_filter_command(&tracker, 1u, &high),
 		      GATE_SEQUENCE_DECISION_EXECUTE);
+	zassert_true(gate_sequence_accept_command(&tracker, 1u, &high));
 	zassert_equal(gate_sequence_filter_command(&tracker, 1u, &rebooted),
 		      GATE_SEQUENCE_DECISION_EXECUTE,
 		      "only equality with the last sequence is duplicate");
+	zassert_true(gate_sequence_accept_command(&tracker, 1u, &rebooted));
 	zassert_equal(gate_sequence_filter_command(&tracker, 1u, &rebooted),
 		      GATE_SEQUENCE_DECISION_DUPLICATE);
 }
@@ -78,8 +83,10 @@ ZTEST(gate_sequence_filter, test_wraparound_uses_equality_only)
 
 	zassert_equal(gate_sequence_filter_command(&tracker, 1u, &max),
 		      GATE_SEQUENCE_DECISION_EXECUTE);
+	zassert_true(gate_sequence_accept_command(&tracker, 1u, &max));
 	zassert_equal(gate_sequence_filter_command(&tracker, 1u, &wrapped),
 		      GATE_SEQUENCE_DECISION_EXECUTE);
+	zassert_true(gate_sequence_accept_command(&tracker, 1u, &wrapped));
 	zassert_equal(gate_sequence_filter_command(&tracker, 1u, &wrapped),
 		      GATE_SEQUENCE_DECISION_DUPLICATE);
 }
@@ -95,9 +102,11 @@ ZTEST(gate_sequence_filter, test_state_is_per_device_identity)
 
 	zassert_equal(gate_sequence_filter_command(trackers, 2u, &from_a),
 		      GATE_SEQUENCE_DECISION_EXECUTE);
+	zassert_true(gate_sequence_accept_command(trackers, 2u, &from_a));
 	zassert_equal(gate_sequence_filter_command(trackers, 2u, &from_b),
 		      GATE_SEQUENCE_DECISION_EXECUTE,
 		      "same sequence from another accepted identity is independent");
+	zassert_true(gate_sequence_accept_command(trackers, 2u, &from_b));
 	zassert_equal(gate_sequence_filter_command(trackers, 2u, &from_a),
 		      GATE_SEQUENCE_DECISION_DUPLICATE);
 	zassert_equal(gate_sequence_filter_command(trackers, 2u, &from_b),
@@ -115,6 +124,8 @@ ZTEST(gate_sequence_filter, test_unknown_device_is_ignored_without_touching_stat
 	zassert_equal(gate_sequence_filter_command(&tracker, 1u, &unknown),
 		      GATE_SEQUENCE_DECISION_IGNORE);
 	zassert_false(tracker.has_last_sequence);
+	zassert_false(gate_sequence_accept_command(&tracker, 1u, &unknown));
+	zassert_false(tracker.has_last_sequence);
 	zassert_equal(gate_sequence_filter_command(&tracker, 1u, &accepted),
 		      GATE_SEQUENCE_DECISION_EXECUTE);
 }
@@ -128,6 +139,7 @@ ZTEST(gate_sequence_filter, test_receiver_reset_forgets_last_sequence)
 
 	zassert_equal(gate_sequence_filter_command(&tracker, 1u, &packet),
 		      GATE_SEQUENCE_DECISION_EXECUTE);
+	zassert_true(gate_sequence_accept_command(&tracker, 1u, &packet));
 	zassert_equal(gate_sequence_filter_command(&tracker, 1u, &packet),
 		      GATE_SEQUENCE_DECISION_DUPLICATE);
 
@@ -154,9 +166,29 @@ ZTEST(gate_sequence_filter, test_invalid_inputs_do_not_change_state)
 		      GATE_SEQUENCE_DECISION_INVALID);
 	zassert_equal(gate_sequence_filter_command(&tracker, 1u, &non_command),
 		      GATE_SEQUENCE_DECISION_INVALID);
+	zassert_false(gate_sequence_accept_command(&tracker, 1u, &non_command));
 
 	packet.sequence = GATE_SEQUENCE_NONE;
 	zassert_equal(gate_sequence_filter_command(&tracker, 1u, &packet),
 		      GATE_SEQUENCE_DECISION_INVALID);
+	zassert_false(gate_sequence_accept_command(&tracker, 1u, &packet));
 	zassert_false(tracker.has_last_sequence);
+}
+
+ZTEST(gate_sequence_filter, test_filter_does_not_mark_sequence_until_accepted)
+{
+	struct gate_sequence_tracker tracker;
+	struct gate_packet packet = command(DEVICE_A, 9u);
+
+	gate_sequence_tracker_init(&tracker, DEVICE_A);
+
+	zassert_equal(gate_sequence_filter_command(&tracker, 1u, &packet),
+		      GATE_SEQUENCE_DECISION_EXECUTE);
+	zassert_equal(gate_sequence_filter_command(&tracker, 1u, &packet),
+		      GATE_SEQUENCE_DECISION_EXECUTE,
+		      "a failed actuator attempt must be retriable");
+
+	zassert_true(gate_sequence_accept_command(&tracker, 1u, &packet));
+	zassert_equal(gate_sequence_filter_command(&tracker, 1u, &packet),
+		      GATE_SEQUENCE_DECISION_DUPLICATE);
 }

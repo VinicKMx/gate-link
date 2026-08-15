@@ -264,6 +264,13 @@ int main(void)
 				set_status_led(false);
 				continue;
 			}
+			if (!gate_sequence_accept_command(sequence_trackers,
+							  ARRAY_SIZE(sequence_trackers), &packet)) {
+				LOG_ERR("RX sequence accept failed seq=%u device=%u",
+					packet.sequence, packet.device_id);
+				set_status_led(false);
+				continue;
+			}
 			break;
 		case GATE_SEQUENCE_DECISION_DUPLICATE:
 			LOG_WRN("RX duplicate seq=%u device=%u, actuator suppressed",

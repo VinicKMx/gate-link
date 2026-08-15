@@ -38,10 +38,23 @@ void gate_sequence_tracker_init(struct gate_sequence_tracker *tracker, uint32_t 
  * State is tracked per accepted transmitter identity. Duplicate detection is
  * equality-only: a sequence is duplicate only when it matches the last sequence
  * already accepted for that same device id.
+ *
+ * This function does not mutate tracker state. Call
+ * gate_sequence_accept_command() only after the command has crossed the
+ * actuator boundary successfully enough that a retry must not trigger it again.
  */
 enum gate_sequence_decision gate_sequence_filter_command(struct gate_sequence_tracker *trackers,
 							 size_t tracker_count,
 							 const struct gate_packet *command);
+
+/**
+ * Record @p command as the last accepted command for its transmitter identity.
+ *
+ * @return true when the command was recorded, false when the arguments do not
+ *         describe an accepted valid COMMAND.
+ */
+bool gate_sequence_accept_command(struct gate_sequence_tracker *trackers, size_t tracker_count,
+				  const struct gate_packet *command);
 
 #ifdef __cplusplus
 }

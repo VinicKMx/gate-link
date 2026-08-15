@@ -372,6 +372,7 @@ int main(void)
 
 		LOG_INF("TX waiting for button release");
 		wait_for_button_state(false);
+		LOG_INF("TX button released");
 	}
 
 	return 0;
