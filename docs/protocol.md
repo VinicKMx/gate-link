@@ -81,7 +81,15 @@ packet validation succeeds
 
 ACKs for old, unknown, or unrelated sequences are ignored.
 
+In protocol version 1, the ACK echoes the transmitter `device_id`, `sequence`,
+and `command` from the command being acknowledged. This keeps ACK matching tied
+to the command currently in progress without adding a receiver identity field
+to the initial packet shape.
+
 ## Duplicate Command Rules
+
+Duplicate suppression is required behavior, but it belongs to Phase 6 of the
+implementation.
 
 The receiver tracks the last accepted command sequence per accepted transmitter
 identity.

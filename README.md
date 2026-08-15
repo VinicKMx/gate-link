@@ -20,7 +20,7 @@ single input to open, stop, or close depending on their current state.
 
 ## System Behavior
 
-Expected behavior:
+Target behavior:
 
 ```text
 TX button press
@@ -41,6 +41,30 @@ The system is designed around unreliable wireless communication:
 - a stale or unrelated ACK can arrive after another command is already active;
 - radio configuration must vary by hardware and region.
 
+## Current Status
+
+The bench firmware has completed Phase 4: structured LoRa packets with ACK.
+Phase 5, timeout plus retry, is next.
+
+Implemented now:
+
+- ESP32 DevKitC WROOM-32D boots under Zephyr;
+- RFM95W/SX1276 is detected over SPI;
+- TX sends binary `COMMAND(TRIGGER, sequence)` packets over LoRa;
+- RX decodes and validates the protocol packet;
+- RX replies with `ACK(sequence)`;
+- TX reports success only for the ACK matching the command in progress.
+
+Not implemented yet:
+
+- physical button debounce;
+- actuator LED pulse;
+- retry after ACK timeout;
+- receiver duplicate suppression;
+- cryptographic authentication.
+
+See [docs/status.md](docs/status.md) for the phase checklist.
+
 ## Layout
 
 ```text
@@ -51,19 +75,17 @@ apps/
     boards/        Devicetree overlays: actuator output, LoRa wiring
 common/
   protocol/        Packet model, encode/decode, and validation
+  radio/           Thin wrapper over the Zephyr LoRa APIs
 docs/
   architecture.md  System boundaries and component responsibilities
   protocol.md      Packet model, ACK, sequencing, and duplicate handling
   decisions.md     Project decisions that constrain implementation
+  status.md        Current implementation phase and bench validation state
 tests/
   protocol/        Host tests for the hardware-independent protocol code
 scripts/
   build_all.sh
 ```
-
-`common/radio/`, the thin wrapper over the Zephyr LoRa APIs, arrives with the
-first over-the-air phase. The board overlays already describe the LoRa wiring it
-will bind to.
 
 ## Design Constraints
 
@@ -169,6 +191,7 @@ west flash -d build/receiver
 - [Architecture](docs/architecture.md)
 - [Protocol](docs/protocol.md)
 - [Decisions](docs/decisions.md)
+- [Status](docs/status.md)
 
 ## Buy Me a Coffee
 
