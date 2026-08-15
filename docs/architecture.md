@@ -112,6 +112,13 @@ An actuator implementation can pulse a GPIO-backed LED or drive an electrically
 isolated output without changing the protocol, radio wrapper, or receiver state
 machine.
 
+Every implementation owes the same guarantee at this boundary: the output must
+end up inactive. Failing to activate it is an ordinary error that returns to the
+caller, which then withholds the ACK so the transmitter retries. Failing to
+deactivate it is not, because there is no later step that would fix it, so the
+receiver retries until the output is down instead of resuming normal operation
+with the gate held open.
+
 ## Hardware Boundary
 
 Board-specific details belong in Zephyr devicetree overlays:

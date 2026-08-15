@@ -154,13 +154,36 @@ of retrying creates hardware that is not there.
 Decision: Phase 7 does not enable a hardware watchdog yet.
 
 Reason: the current firmware already bounds command waits, ACK waits, retries,
-radio recovery pacing, and actuator pulse duration. The only intentionally
+radio recovery pacing, and actuator pulse duration. Most intentionally
 unbounded waits are safe operating states: the transmitter waiting for a button
 event, the transmitter waiting for button release, and the receiver waiting for
-packets or radio recovery. Adding a watchdog before defining the installed
+packets or radio recovery. One is not: the receiver retries forever to
+de-energize a stuck actuator output, because that is the one state where
+staying busy matters more than staying responsive. Adding a watchdog before defining the installed
 actuator's electrical safe state could hide the more important question: what
 must happen if the output driver is stuck active or the radio never recovers.
 
 Implementation constraint: when a watchdog is added, it must be fed only from a
 health policy that proves the main loop, radio state, and actuator safe state
 are sane. It must not be fed blindly from a timer callback.
+
+## D014 - A Missing I/O Device Is a Build Error, Not a Runtime Failure
+
+Decision: when a button, LED, or actuator GPIO cannot be acquired or configured
+at startup, the application logs the failure and stops. It does not retry the
+way a radio failure is retried (D012).
+
+Reason: the difference is whether retrying can ever succeed. A radio module can
+be unpowered, miswired, or briefly wedged, and heal without anyone touching it.
+A GPIO controller that is not ready, or a pin that refuses to configure, means
+the devicetree overlay does not describe the board that is running. No amount of
+retrying produces a pin the build never bound, so retrying would only turn a
+deterministic configuration error into a board that looks alive and silently
+never works. Each alias is already asserted at build time, so reaching this path
+at all means the overlay and the hardware disagree.
+
+Implementation constraint: this covers only acquiring and configuring the pins
+at startup. It does not extend to runtime I/O errors, which are recoverable and
+are handled as such: a failed button read keeps the transmitter waiting instead
+of fabricating a command, and a failed actuator turn-off is retried forever
+rather than leaving the output energized.

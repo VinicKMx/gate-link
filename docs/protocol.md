@@ -96,6 +96,17 @@ A retry is not a new command.
 The transmitter gives up after the configured retry limit and reports final
 failure for that sequence. The next command receives the next sequence number.
 
+The receiver fires the actuator before it sends the ACK, so the actuator pulse
+is part of the turnaround the transmitter is waiting on. The ACK timeout must
+therefore stay comfortably above the pulse duration plus airtime. If it does
+not, every command times out and the transmitter reports failure for commands
+the receiver actually executed, which is the most misleading state this
+protocol can reach: the gate opens and the user is told it did not.
+
+A sequence is recorded as accepted only after the actuator pulse completes.
+Failing to fire leaves the sequence unrecorded and unacknowledged, so the
+transmitter's retry is treated as a fresh command rather than a duplicate.
+
 ## Duplicate Command Rules
 
 The receiver tracks the last accepted command sequence per accepted transmitter

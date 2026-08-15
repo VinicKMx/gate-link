@@ -4,6 +4,26 @@ This document tracks manual bench validation for the current LED-only build.
 Hardware-independent protocol and sequence behavior is covered by ztest under
 `tests/`.
 
+## Results
+
+A test counts as passed only after it has been run against the application
+firmware on the bench. Running the temporary I/O test sketch does not count: it
+proves the wiring, not this firmware.
+
+| Test     | Subject                       | Last run   | Result      |
+|----------|-------------------------------|------------|-------------|
+| TEST-001 | Normal trigger flow           | -          | not run     |
+| TEST-002 | Button held                   | -          | not run     |
+| TEST-003 | Lost ACK / duplicate command  | -          | not run     |
+| TEST-004 | Receiver unavailable          | -          | not run     |
+| TEST-005 | Invalid or oversized packet   | -          | twister     |
+| TEST-006 | Incorrect ACK                 | -          | twister     |
+| TEST-007 | Radio failure recovery        | -          | not run     |
+
+TEST-005 and TEST-006 run under twister rather than on the bench; fill in the
+date of the last passing run. Update this table in the same commit that runs a
+test, so `docs/status.md` never claims more than this table supports.
+
 ## TEST-001 - Normal Trigger Flow
 
 Given:

@@ -43,10 +43,12 @@ The system is designed around unreliable wireless communication:
 
 ## Current Status
 
-The bench firmware has completed Phase 7 on the current LED-only hardware.
-Physical button input, status LEDs, actuator LED pulse, structured LoRa
-packets, ACK, timeout, retry, receiver duplicate suppression, and software
-radio recovery are implemented.
+The bench firmware is code-complete through Phase 7 on the current LED-only
+hardware. Physical button input, status LEDs, actuator LED pulse, structured
+LoRa packets, ACK, timeout, retry, receiver duplicate suppression, and software
+radio recovery are implemented. The button and LED paths still need an
+end-to-end bench run with the application firmware; see
+[docs/test-plan.md](docs/test-plan.md).
 
 Implemented now:
 
