@@ -58,8 +58,12 @@ config GATE_RADIO_RECOVERY_THRESHOLD
 	default 3
 	range 1 20
 	help
-	  How many consecutive radio errors are tolerated before the application
-	  re-probes the module and reprograms the modem.
+	  How many consecutive receiver radio errors are tolerated before the
+	  receiver re-probes the module and reprograms the modem.
+
+	  The transmitter does not use this threshold for runtime command
+	  handling. Once a command reaches the transmitter state machine boundary,
+	  a local radio error triggers recovery on the same button cycle.
 
 	  Waiting for a peer that never answers is not a radio error and never
 	  counts toward this threshold: a command that exhausts its retries means

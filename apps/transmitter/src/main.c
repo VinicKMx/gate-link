@@ -209,7 +209,7 @@ static int wait_for_ack(const struct gate_packet *command)
 	ret = gate_radio_configure_rx();
 	if (ret < 0) {
 		LOG_ERR("TX radio RX config failed: %d", ret);
-		return ret;
+		return -EIO;
 	}
 
 	LOG_INF("TX waiting for ACK seq=%u command=%s timeout=%u ms", command->sequence,
@@ -244,7 +244,7 @@ static int wait_for_ack(const struct gate_packet *command)
 
 		if (ret < 0) {
 			LOG_ERR("TX ACK receive failed seq=%u ret=%d", command->sequence, ret);
-			return ret;
+			return -EIO;
 		}
 
 		status = gate_protocol_decode(buffer, rx.length, &packet);
@@ -318,7 +318,7 @@ static int transmit_command_with_retries(const struct gate_packet *packet)
 
 		if (ret != -EAGAIN) {
 			LOG_ERR("TX command aborted seq=%u ret=%d", packet->sequence, ret);
-			return ret;
+			return ret == -EINVAL ? ret : -EIO;
 		}
 	}
 
