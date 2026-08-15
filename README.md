@@ -43,8 +43,9 @@ The system is designed around unreliable wireless communication:
 
 ## Current Status
 
-The bench firmware has completed Phase 4: structured LoRa packets with ACK.
-Phase 5, timeout plus retry, is next.
+The bench firmware has completed Phase 6: structured LoRa packets with ACK,
+timeout, retry, and receiver duplicate suppression. Phase 1 actuator/button
+GPIO wiring is still pending physical bench wiring.
 
 Implemented now:
 
@@ -53,14 +54,16 @@ Implemented now:
 - TX sends binary `COMMAND(TRIGGER, sequence)` packets over LoRa;
 - RX decodes and validates the protocol packet;
 - RX replies with `ACK(sequence)`;
-- TX reports success only for the ACK matching the command in progress.
+- TX reports success only for the ACK matching the command in progress;
+- TX retransmits the same command sequence after ACK timeout, up to a
+  configured retry limit;
+- RX suppresses duplicate command execution by accepted transmitter identity and
+  still replies with ACK.
 
 Not implemented yet:
 
 - physical button debounce;
 - actuator LED pulse;
-- retry after ACK timeout;
-- receiver duplicate suppression;
 - cryptographic authentication.
 
 See [docs/status.md](docs/status.md) for the phase checklist.
@@ -75,6 +78,7 @@ apps/
     boards/        Devicetree overlays: actuator output, LoRa wiring
 common/
   protocol/        Packet model, encode/decode, and validation
+  sequence/        Receiver-side command duplicate suppression
   radio/           Thin wrapper over the Zephyr LoRa APIs
 docs/
   architecture.md  System boundaries and component responsibilities
@@ -82,7 +86,8 @@ docs/
   decisions.md     Project decisions that constrain implementation
   status.md        Current implementation phase and bench validation state
 tests/
-  protocol/        Host tests for the hardware-independent protocol code
+  protocol/        Host tests for packet encoding, validation, and ACK matching
+  sequence/        Host tests for duplicate suppression decisions
 scripts/
   build_all.sh
 ```

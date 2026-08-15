@@ -86,10 +86,16 @@ and `command` from the command being acknowledged. This keeps ACK matching tied
 to the command currently in progress without adding a receiver identity field
 to the initial packet shape.
 
-## Duplicate Command Rules
+## Retransmission Rules
 
-Duplicate suppression is required behavior, but it belongs to Phase 6 of the
-implementation.
+When the transmitter does not receive a matching ACK before the configured ACK
+timeout, it retransmits the same `COMMAND` packet with the same sequence number.
+A retry is not a new command.
+
+The transmitter gives up after the configured retry limit and reports final
+failure for that sequence. The next command receives the next sequence number.
+
+## Duplicate Command Rules
 
 The receiver tracks the last accepted command sequence per accepted transmitter
 identity.
@@ -113,6 +119,11 @@ COMMAND sequence=N is retransmitted
 ```
 
 The second command must not produce a second actuator pulse.
+
+Duplicate detection uses equality with the last sequence accepted for the same
+device id. It does not use ordering comparisons such as "less than or equal",
+because the transmitter can reboot and restart at sequence 1, and the sequence
+field wraps from `UINT32_MAX` back to 1 while `0` remains reserved.
 
 ## Radio Independence
 

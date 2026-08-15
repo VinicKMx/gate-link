@@ -30,7 +30,16 @@ config GATE_TX_ACK_TIMEOUT_MS
 	range 100 10000
 	help
 	  Time spent listening for the ACK that matches the command currently in
-	  progress. Retries are added in a later phase.
+	  progress before the same command sequence is retransmitted.
+
+config GATE_TX_MAX_RETRIES
+	int "Maximum command retransmissions"
+	default 3
+	range 0 10
+	help
+	  Number of retransmissions after the initial send when no matching ACK is
+	  received. A value of 3 means up to 4 transmissions of the same sequence:
+	  the initial send plus 3 retries.
 
 endmenu
 

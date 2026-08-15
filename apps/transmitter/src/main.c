@@ -127,6 +127,48 @@ static int wait_for_ack(uint32_t sequence)
 	}
 }
 
+static int transmit_command_with_retries(const struct gate_packet *packet)
+{
+	const uint32_t max_retries = CONFIG_GATE_TX_MAX_RETRIES;
+	const uint32_t total_attempts = max_retries + 1u;
+
+	for (uint32_t attempt = 1u; attempt <= total_attempts; attempt++) {
+		int ret;
+
+		if (attempt == 1u) {
+			LOG_INF("TX command attempt %u/%u seq=%u", attempt, total_attempts,
+				packet->sequence);
+		} else {
+			LOG_WRN("TX retry %u/%u seq=%u", attempt - 1u, max_retries,
+				packet->sequence);
+		}
+
+		/* send_command() already logged the specific failure. */
+		ret = send_command(packet);
+		if (ret < 0) {
+			return ret;
+		}
+
+		ret = wait_for_ack(packet->sequence);
+		if (ret == 0) {
+			LOG_INF("TX command success seq=%u attempts=%u", packet->sequence,
+				attempt);
+			return 0;
+		}
+
+		if (ret != -EAGAIN) {
+			LOG_ERR("TX command aborted seq=%u ret=%d", packet->sequence, ret);
+			return ret;
+		}
+	}
+
+	LOG_ERR("TX command final failure seq=%u attempts=%u retries=%u", packet->sequence,
+		total_attempts, max_retries);
+
+	/* The loop can only fall through after wait_for_ack() timed out. */
+	return -EAGAIN;
+}
+
 int main(void)
 {
 	int ret;
@@ -149,13 +191,7 @@ int main(void)
 		gate_protocol_init_command(&packet, CONFIG_GATE_TX_DEVICE_ID, sequence,
 					   GATE_COMMAND_TRIGGER);
 
-		ret = send_command(&packet);
-		if (ret == 0) {
-			ret = wait_for_ack(sequence);
-			if (ret == 0) {
-				LOG_INF("TX command success seq=%u", sequence);
-			}
-		}
+		(void)transmit_command_with_retries(&packet);
 
 		k_sleep(K_MSEC(CONFIG_GATE_TX_SEND_INTERVAL_MS));
 	}

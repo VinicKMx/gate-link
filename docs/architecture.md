@@ -6,6 +6,7 @@ Gate Link is split into two Zephyr applications and shared modules.
 apps/transmitter
 apps/receiver
 common/protocol
+common/sequence
 common/radio
 ```
 
@@ -67,6 +68,14 @@ commands, encode/decode, and validation rules.
 
 It does not call Zephyr LoRa APIs and does not know about GPIOs, buttons, LEDs,
 or actuator hardware.
+
+## Shared Sequence Module
+
+`common/sequence` owns receiver-side duplicate suppression. It tracks the last
+accepted sequence per accepted transmitter identity and decides whether a valid
+command should cross the actuator boundary.
+
+It does not send ACKs, receive radio packets, or drive actuator hardware.
 
 ## Radio Boundary
 

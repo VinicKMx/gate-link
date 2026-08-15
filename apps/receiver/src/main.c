@@ -12,6 +12,7 @@
 
 #include <protocol/gate_protocol.h>
 #include <radio/gate_radio.h>
+#include <sequence/gate_sequence_filter.h>
 
 LOG_MODULE_REGISTER(gate_rx, CONFIG_GATE_RX_LOG_LEVEL);
 
@@ -69,11 +70,13 @@ static int send_ack(const struct gate_packet *command)
 
 int main(void)
 {
+	struct gate_sequence_tracker sequence_trackers[1];
 	int ret;
 
 	LOG_INF("RX boot");
 	LOG_INF("RX protocol version=%u packet=%u bytes command=%s", gate_protocol_version(),
 		GATE_PROTOCOL_PACKET_SIZE, gate_command_name(GATE_COMMAND_TRIGGER));
+	gate_sequence_tracker_init(&sequence_trackers[0], CONFIG_GATE_RX_ACCEPTED_DEVICE_ID);
 
 	ret = gate_radio_init();
 	if (ret < 0) {
@@ -126,16 +129,26 @@ int main(void)
 			gate_message_type_name(packet.type), gate_command_name(packet.command),
 			packet.sequence, packet.device_id, rx.rssi, rx.snr);
 
-		if (packet.type != GATE_MESSAGE_TYPE_COMMAND) {
-			LOG_WRN("RX ignored non-command packet type=%s seq=%u",
-				gate_message_type_name(packet.type), packet.sequence);
-			continue;
-		}
-
-		if (packet.device_id != (uint32_t)CONFIG_GATE_RX_ACCEPTED_DEVICE_ID) {
+		switch (gate_sequence_filter_command(sequence_trackers, ARRAY_SIZE(sequence_trackers),
+						    &packet)) {
+		case GATE_SEQUENCE_DECISION_EXECUTE:
+			LOG_INF("RX would trigger actuator seq=%u device=%u", packet.sequence,
+				packet.device_id);
+			break;
+		case GATE_SEQUENCE_DECISION_DUPLICATE:
+			LOG_WRN("RX duplicate seq=%u device=%u, actuator suppressed", packet.sequence,
+				packet.device_id);
+			break;
+		case GATE_SEQUENCE_DECISION_IGNORE:
 			LOG_WRN("RX ignored command from device=%u seq=%u, accepting only device=%u",
 				packet.device_id, packet.sequence,
 				(unsigned int)CONFIG_GATE_RX_ACCEPTED_DEVICE_ID);
+			continue;
+		case GATE_SEQUENCE_DECISION_INVALID:
+		default:
+			LOG_WRN("RX ignored packet after sequence check type=%s seq=%u device=%u",
+				gate_message_type_name(packet.type), packet.sequence,
+				packet.device_id);
 			continue;
 		}
 

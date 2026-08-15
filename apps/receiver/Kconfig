@@ -15,8 +15,8 @@ config GATE_RX_ACCEPTED_DEVICE_ID
 	range 1 2147483647
 	help
 	  Device id of the transmitter this receiver answers. Commands carrying
-	  any other device id are ignored without an ACK. Phase 6 tracks the
-	  last executed sequence for this identity.
+	  any other device id are ignored without an ACK. Duplicate detection
+	  tracks the last accepted sequence for this identity.
 
 	  This is addressing, not authentication: a device id is trivial to
 	  spoof and only phase 8 makes a command unforgeable.

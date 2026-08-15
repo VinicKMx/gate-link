@@ -1,0 +1,79 @@
+/*
+ * Copyright (c) 2026 Vinicius Pedrosa
+ *
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ */
+
+#include <sequence/gate_sequence_filter.h>
+
+void gate_sequence_tracker_init(struct gate_sequence_tracker *tracker, uint32_t device_id)
+{
+	if (tracker == NULL) {
+		return;
+	}
+
+	tracker->device_id = device_id;
+	tracker->last_sequence = GATE_SEQUENCE_NONE;
+	tracker->has_last_sequence = false;
+}
+
+const char *gate_sequence_decision_name(enum gate_sequence_decision decision)
+{
+	switch (decision) {
+	case GATE_SEQUENCE_DECISION_EXECUTE:
+		return "EXECUTE";
+	case GATE_SEQUENCE_DECISION_DUPLICATE:
+		return "DUPLICATE";
+	case GATE_SEQUENCE_DECISION_IGNORE:
+		return "IGNORE";
+	case GATE_SEQUENCE_DECISION_INVALID:
+		return "INVALID";
+	default:
+		return "UNKNOWN";
+	}
+}
+
+static struct gate_sequence_tracker *
+find_tracker(struct gate_sequence_tracker *trackers, size_t tracker_count, uint32_t device_id)
+{
+	for (size_t i = 0u; i < tracker_count; i++) {
+		if (trackers[i].device_id == device_id) {
+			return &trackers[i];
+		}
+	}
+
+	return NULL;
+}
+
+enum gate_sequence_decision
+gate_sequence_filter_command(struct gate_sequence_tracker *trackers, size_t tracker_count,
+			     const struct gate_packet *command)
+{
+	struct gate_sequence_tracker *tracker;
+
+	if (trackers == NULL || tracker_count == 0u || command == NULL) {
+		return GATE_SEQUENCE_DECISION_INVALID;
+	}
+
+	if (gate_protocol_validate(command) != GATE_PROTOCOL_OK) {
+		return GATE_SEQUENCE_DECISION_INVALID;
+	}
+
+	if (command->type != GATE_MESSAGE_TYPE_COMMAND) {
+		return GATE_SEQUENCE_DECISION_INVALID;
+	}
+
+	tracker = find_tracker(trackers, tracker_count, command->device_id);
+	if (tracker == NULL) {
+		return GATE_SEQUENCE_DECISION_IGNORE;
+	}
+
+	if (tracker->has_last_sequence && tracker->last_sequence == command->sequence) {
+		return GATE_SEQUENCE_DECISION_DUPLICATE;
+	}
+
+	tracker->last_sequence = command->sequence;
+	tracker->has_last_sequence = true;
+
+	return GATE_SEQUENCE_DECISION_EXECUTE;
+}
