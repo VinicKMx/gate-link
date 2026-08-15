@@ -32,8 +32,6 @@ struct gate_sequence_tracker {
 
 void gate_sequence_tracker_init(struct gate_sequence_tracker *tracker, uint32_t device_id);
 
-const char *gate_sequence_decision_name(enum gate_sequence_decision decision);
-
 /**
  * Decide whether a valid command should cross the actuator boundary.
  *

@@ -17,22 +17,6 @@ void gate_sequence_tracker_init(struct gate_sequence_tracker *tracker, uint32_t 
 	tracker->has_last_sequence = false;
 }
 
-const char *gate_sequence_decision_name(enum gate_sequence_decision decision)
-{
-	switch (decision) {
-	case GATE_SEQUENCE_DECISION_EXECUTE:
-		return "EXECUTE";
-	case GATE_SEQUENCE_DECISION_DUPLICATE:
-		return "DUPLICATE";
-	case GATE_SEQUENCE_DECISION_IGNORE:
-		return "IGNORE";
-	case GATE_SEQUENCE_DECISION_INVALID:
-		return "INVALID";
-	default:
-		return "UNKNOWN";
-	}
-}
-
 static struct gate_sequence_tracker *
 find_tracker(struct gate_sequence_tracker *trackers, size_t tracker_count, uint32_t device_id)
 {

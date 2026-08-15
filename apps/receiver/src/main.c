@@ -146,7 +146,7 @@ int main(void)
 			continue;
 		case GATE_SEQUENCE_DECISION_INVALID:
 		default:
-			LOG_WRN("RX ignored packet after sequence check type=%s seq=%u device=%u",
+			LOG_WRN("RX ignored non-command packet type=%s seq=%u device=%u",
 				gate_message_type_name(packet.type), packet.sequence,
 				packet.device_id);
 			continue;

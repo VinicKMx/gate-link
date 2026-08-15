@@ -141,15 +141,3 @@ ZTEST(gate_sequence_filter, test_invalid_inputs_do_not_change_state)
 		      GATE_SEQUENCE_DECISION_INVALID);
 	zassert_false(tracker.has_last_sequence);
 }
-
-ZTEST(gate_sequence_filter, test_decision_names_cover_unknown_values)
-{
-	zassert_str_equal(gate_sequence_decision_name(GATE_SEQUENCE_DECISION_EXECUTE),
-			  "EXECUTE");
-	zassert_str_equal(gate_sequence_decision_name(GATE_SEQUENCE_DECISION_DUPLICATE),
-			  "DUPLICATE");
-	zassert_str_equal(gate_sequence_decision_name(GATE_SEQUENCE_DECISION_IGNORE), "IGNORE");
-	zassert_str_equal(gate_sequence_decision_name(GATE_SEQUENCE_DECISION_INVALID),
-			  "INVALID");
-	zassert_str_equal(gate_sequence_decision_name(99), "UNKNOWN");
-}
